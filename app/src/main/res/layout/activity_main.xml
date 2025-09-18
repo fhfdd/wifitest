@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="25dp">
+
+
+    <!-- 原生ImageView实现缩放和点击 -->
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="match_parent"
+        android:layout_height="250dp"
+        android:background="#f5f5f5"
+        android:contentDescription="校园平面图显示区域"
+        android:scaleType="matrix" />
+
+    <!-- 2. 像素坐标与楼层 -->
+    <EditText
+        android:id="@+id/etPixelX"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="点击图片自动填充像素X"
+        android:inputType="numberDecimal"
+        android:layout_marginTop="10dp" />
+
+    <EditText
+        android:id="@+id/etPixelY"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="点击图片自动填充像素Y"
+        android:inputType="numberDecimal" />
+
+    <EditText
+        android:id="@+id/etFloor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="输入当前楼层（如1、2）"
+        android:inputType="number" />
+
+    <!-- 3. 选择WiFi按钮（手动筛选） -->
+    <Button
+        android:id="@+id/btnSelectWifi"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="选择需保留的WiFi（至少3个）"
+        android:layout_marginTop="10dp" />
+
+    <!-- 4. 功能按钮（扫描、一键保存、导出） -->
+    <Button
+        android:id="@+id/scanButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="开始扫描WiFi（至少3次）"
+        android:layout_marginTop="10dp" />
+
+    <Button
+        android:id="@+id/btnOneClickSave"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="一键保存筛选后的WiFi"
+        android:layout_marginTop="10dp" />
+
+    <Button
+        android:id="@+id/btnExport"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="导出所有指纹坐标（JSON格式）"
+        android:layout_marginTop="10dp" />
+
+    <!-- 1. 图片导入与显示区（使用原生ImageView） -->
+    <Button
+        android:id="@+id/btnImportImage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="导入校园平面图"
+        android:layout_marginBottom="10dp" />
+
+    <Button
+        android:id="@+id/btnRealTimeLocate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="btnRealTimeLocate"
+        android:layout_marginBottom="10dp" />
+
+    <!-- 5. 结果显示 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="10dp">
+
+        <TextView
+            android:id="@+id/wifiText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="点击导入图片，然后点击图片获取像素点..."
+            android:textSize="14sp" />
+    </ScrollView>
+
+</LinearLayout>

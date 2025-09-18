@@ -1,0 +1,26 @@
+[versions]
+# 所有版本号都放在这一个 [versions] 块里
+agp = "8.10.0"
+junit = "4.13.2"
+junitVersion = "1.2.1"
+espressoCore = "3.6.1"
+appcompat = "1.7.1"
+material = "1.12.0"
+gson = "2.10.1"  # ✅ 添加 Gson 的版本号
+photoview = "2.3.0"
+activityKtx = "1.8.2"  # 已有 activity-ktx 的版本
+
+[libraries]
+# 所有库依赖都放在这一个 [libraries] 块里
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }  # ✅ 声明 Gson 库（关联上方的 gson 版本）
+photoview = { group = "com.github.chrisbanes", name = "PhotoView", version.ref = "photoview" }
+# 新增 activity-ktx 库声明（替换直接写版本的方式）
+activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
