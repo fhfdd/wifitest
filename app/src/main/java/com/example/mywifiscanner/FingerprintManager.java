@@ -43,10 +43,11 @@ public class FingerprintManager {
             for (ScanResult scan : scanList) { // 遍历单次扫描的每个结果
                 // 过滤条件：BSSID不为空 + 信号强度达标（例如 >= -90）
                 if (scan.BSSID != null && scan.level >= -90) {
+                    String cleanedSsid = scan.SSID.replace("\"", ""); // 去除双引号
                     filtered.add(new FilteredWifi(
-                            scan.SSID,    // 对应ssid
-                            scan.BSSID,   // 对应bssid
-                            scan.level    // 对应rssi（信号强度）
+                            cleanedSsid,  // 清洗后的SSID
+                            scan.BSSID,
+                            scan.level
                     ));
                 }
             }

@@ -104,7 +104,17 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         scanButton.setEnabled(true);
         btnSelectWifi.setEnabled(true);
         btnOneClickSave.setEnabled(true);
+        // 关键：保存扫描结果到multipleScans
+        multipleScans = allScanResults;
+        // 立即处理结果，生成filteredWifis（避免后续重复处理）
+        if (fingerprintManager != null) {
+            filteredWifis = fingerprintManager.filterAndSortWifi(multipleScans);
+        }
         tvResult.append("所有扫描完成！共" + allScanResults.size() + "次结果\n");
+        // 可选：显示扫描到的WiFi数量，方便调试
+        if (filteredWifis != null) {
+            tvResult.append("有效WiFi信号：" + filteredWifis.size() + "个\n");
+        }
     }
 
     @Override
