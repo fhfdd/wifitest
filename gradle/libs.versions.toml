@@ -1,6 +1,6 @@
 [versions]
 # 所有版本号都放在这一个 [versions] 块里
-agp = "8.10.0"
+agp = "8.10.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"

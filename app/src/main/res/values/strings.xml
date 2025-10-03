@@ -1,3 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 通用文本 -->
     <string name="app_name">MyWifiScanner</string>
+    <string name="open_menu">打开菜单</string>
+    <string name="map_preview">地图预览</string>
+    <string name="x_coord">X坐标</string>
+    <string name="y_coord">Y坐标</string>
+
+
+    <!-- 点位类型 -->
+    <string name="special_point">特殊点</string>
+    <string name="normal_point">普通点</string>
+    <string name="special_point_hint">特殊点名称（如：图书馆入口）</string>
+    <string name="normal_point_hint">普通点距离（如：距离入口5米）</string>
+
+    <!-- Spinner提示 -->
+    <string name="floor_prompt">选择楼层</string>  <!-- 修复：用于Spinner的prompt属性 -->
+    <string name="zone_prompt">选择区域</string>   <!-- 修复：用于Spinner的prompt属性 -->
+
+    <!-- 网格配置 -->
+    <string name="show_grid">显示网格</string>
+
+    <!-- 按钮文本 -->
+    <string name="import_image">导入图片</string>
+    <string name="scan_wifi">扫描WiFi</string>
+    <string name="select_wifi">选择WiFi</string>
+    <string name="save_fingerprint">保存指纹</string>
+    <string name="export_data">导出数据</string>
+    <string name="real_time_locate">实时定位</string>
+    <string name="show_all_marker">显示所有标记</string>
+
+    <!-- 菜单文本 -->
+    <string name="view_exported_files">查看导出文件</string>
+    <string name="import_json">导入JSON</string>
+    <string name="save_map_custom">自定义保存地图</string>
+
+    <string name="spinner_floor_prompt">楼层</string>  <!-- 新增：楼层提示 -->
+    <string name="spinner_zone_prompt">区域</string>
 </resources>

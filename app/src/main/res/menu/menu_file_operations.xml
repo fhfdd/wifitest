@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 文件管理组 -->
+    <group android:id="@+id/group_file_management" android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_create_new_file"
+            android:title="创建新文件"/> <!-- 补充闭合 -->
+        <item
+            android:id="@+id/nav_import_file"
+            android:title="导入文件"/> <!-- 补充闭合 -->
+        <item
+            android:id="@+id/nav_update_current_file"
+            android:title="更新当前文件"/> <!-- 补充闭合 -->
+        <item
+            android:id="@+id/nav_view_all_files"
+            android:title="查看所有文件"/> <!-- 补充闭合 -->
+    </group>
+
+    <!-- 导出组 -->
+    <group android:id="@+id/group_export" android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_view_exported_files"
+            android:title="查看导出文件"/> <!-- 补充闭合 -->
+        <item
+            android:id="@+id/nav_export_simplified"
+            android:title="导出精简数据"/> <!-- 补充闭合 -->
+    </group>
+
+    <!-- 导入组 -->
+    <group android:id="@+id/group_import" android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_import_json"
+            android:title="导入JSON文件"/> <!-- 补充闭合 -->
+    </group>
+
+    <!-- 保存组 -->
+    <group android:id="@+id/group_save" android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_save_map_custom"
+            android:title="保存当前地图"/> <!-- 补充闭合 -->
+    </group>
+</menu>
