@@ -51,10 +51,9 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     private static final int MIN_SCAN_COUNT = 3;
     private static final int MIN_SELECT_WIFI_COUNT = 3;
     private TextView tvFileStatus, tvResult, navHeaderFileStatus, tvPermissionTip, tvCurrentFile;
-    private String currentEditingFile = null;
+    private String currentEditingFile = null; // 当前编辑的指纹库文件名
     private CoordinateManager coordinateManager;
-    private GridControlModule gridControlModule;
-    private MapFileModule mapFileModule;
+    private MapFileModule mapFileModule; // 指纹库文件管理
     private InputSwitchModule inputSwitchModule;
     private Button btnOpenDrawer, btnShowAllMarkers, btnManageFingerprints, btnImportImage, scanButton, btnSelectWifi, btnOneClickSave, btnExport, btnRealTimeLocate;
     private ImageView imageView;
@@ -63,35 +62,36 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     private Spinner spinnerFloor, spinnerZone;
     private DrawerLayout drawerLayout;
     private NavigationView navView;
-    private FingerprintManager fingerprintManager;
-    private ActivityResultLauncher<Intent> importLauncher;
+    private FingerprintManager fingerprintManager; // 指纹管理器
+    private ActivityResultLauncher<Intent> importLauncher; // 指纹库导入启动器
     private RadioGroup rgPointType;
 
     // 工具类实例
     private PermissionManager permissionManager;
-    private ImageHandler imageHandler;
-    private WifiLocationManager wifiLocationManager;
+    private ImageHandler imageHandler; // 图片处理（显示地图和标记）
+    private WifiLocationManager wifiLocationManager; // 定位管理器
     private WifiManager wifiManager;
     private WifiScanner wifiScanner;
 
     // 数据变量
-    private List<List<ScanResult>> multipleScans = new ArrayList<>();
-    private List<FilteredWifi> filteredWifis;
-    private final List<FilteredWifi> selectedWifis = new ArrayList<>();
+    private List<List<ScanResult>> multipleScans = new ArrayList<>(); // 多次扫描结果
+    private List<FilteredWifi> filteredWifis; // 筛选后的WiFi列表
+    private final List<FilteredWifi> selectedWifis = new ArrayList<>(); // 选中的WiFi
     private boolean isScanning = false;
     private final Handler handler = new Handler();
-    private WifiFingerprint currentEditingFingerprint;
+    private WifiFingerprint currentEditingFingerprint; // 当前编辑的指纹
 
-    // 图片选择启动器
+    // 图片选择启动器（用于导入固定地图）
     private final ActivityResultLauncher<Intent> imagePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                     Uri imageUri = result.getData().getData();
                     if (imageUri != null) {
-                        imageHandler.loadImageFromUri(imageUri);
+                        imageHandler.loadImageFromUri(imageUri); // 加载固定地图
                         btnRealTimeLocate.setEnabled(true);
                         btnShowAllMarkers.setEnabled(true);
+                        Toast.makeText(this, "地图加载成功", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -100,7 +100,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     @Override
     public void onMultipleScansComplete(List<List<ScanResult>> allScanResults) {
         this.multipleScans = allScanResults;
-        this.filteredWifis = FingerprintManager.filterAndSortWifi(allScanResults);
+        this.filteredWifis = FingerprintManager.filterAndSortWifi(allScanResults); // 筛选WiFi
         runOnUiThread(() -> {
             tvResult.append("多次扫描完成，共发现" + filteredWifis.size() + "个稳定WiFi\n");
             btnSelectWifi.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
@@ -124,22 +124,16 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
         // 初始化控件
         initViews();
-        // 初始化工具类（关键：必须先初始化工具类，避免空指针）
+        // 初始化工具类
         initManagers();
         // 初始化导入启动器
         initImportLauncher();
-        // 初始化网格控制
+        // 初始化网格控制（如需保留网格功能）
         initGridControl();
         // 初始化侧边栏
         initDrawerLayout();
 
-        // 初始化模块（依赖注入，使用成员变量而非局部变量）
-        this.wifiScanner = new WifiScanner(this, wifiManager);
-        this.coordinateManager = new CoordinateManager(imageHandler);
-        this.mapFileModule = new MapFileModule(this, fingerprintManager);
-        this.fingerprintManager = new FingerprintManager();
-
-        // 绑定点位类型切换逻辑
+        // 绑定点位类型切换逻辑（特殊点/普通点）
         inputSwitchModule = new InputSwitchModule(
                 findViewById(R.id.rgPointType),
                 findViewById(R.id.etLabel),
@@ -153,18 +147,14 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
         // 初始化显示
         updateFileStatusDisplay();
-        checkAndPromptNoFile();
+        checkAndPromptNoFile(); // 启动时检查是否有指纹库文件
     }
 
     // 更新文件状态显示（同步主布局和侧边栏）
     private void updateFileStatusDisplay() {
-        MapData currentFile = mapFileModule.getCurrentMapData();
-        String status;
-        if (currentFile != null) {
-            status = "当前编辑：" + currentFile.getFileName() + ".json";
-        } else {
-            status = "未选择文件（请创建或导入）";
-        }
+        String status = (currentEditingFile != null)
+                ? "当前编辑：" + currentEditingFile
+                : "未选择文件（请创建或导入指纹库）";
         tvCurrentFile.setText(status);
         if (navHeaderFileStatus != null) {
             navHeaderFileStatus.setText(status);
@@ -173,34 +163,32 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
     // 启动时检查无文件并提示
     private void checkAndPromptNoFile() {
-        if (mapFileModule.getCurrentMapData() == null) {
+        if (currentEditingFile == null) {
             new AlertDialog.Builder(this)
                     .setTitle("提示")
-                    .setMessage("未检测到文件，是否创建新文件？")
+                    .setMessage("未检测到指纹库文件，是否创建新文件？")
                     .setPositiveButton("创建", (d, w) -> createNewFile())
                     .setNegativeButton("导入", (d, w) -> importJsonFile())
                     .show();
         }
     }
 
-    // 绑定侧边栏菜单事件
+    // 绑定侧边栏菜单事件（仅保留指纹库相关操作）
     private void bindNavMenuEvents() {
         navView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
             if (id == R.id.nav_create_new_file) {
-                createNewFile();
+                createNewFile(); // 创建新指纹库
             } else if (id == R.id.nav_import_file || id == R.id.nav_import_json) {
-                importJsonFile();
+                importJsonFile(); // 导入指纹库
             } else if (id == R.id.nav_update_current_file) {
-                updateCurrentFile();
+                updateCurrentFile(); // 更新当前指纹库
             } else if (id == R.id.nav_view_all_files) {
-                viewAllFiles();
+                viewAllFiles(); // 查看所有指纹库文件
             } else if (id == R.id.nav_export_simplified) {
-                exportSimplifiedData();
+                exportSimplifiedData(); // 导出指纹库
             } else if (id == R.id.nav_view_exported_files) {
-                viewExportedFiles();
-            } else if (id == R.id.nav_save_map_custom) {
-                saveCurrentMap();
+                viewExportedFiles(); // 查看导出的指纹库
             }
             drawerLayout.closeDrawer(GravityCompat.START);
             return true;
@@ -227,7 +215,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 设置侧边栏（移除重复逻辑）
+     * 设置侧边栏
      */
     private void setupNavigationView() {
         NavigationView navView = findViewById(R.id.navView);
@@ -237,37 +225,11 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 更新文件状态（同时更新主界面和侧边栏）
-     */
-    private void updateFileStatus() {
-        String statusText;
-        int textColor;
-
-        if (currentEditingFile != null) {
-            statusText = "当前编辑: " + currentEditingFile;
-            textColor = Color.GREEN;
-        } else {
-            statusText = "未选择文件";
-            textColor = Color.RED;
-        }
-
-        if (tvFileStatus != null) {
-            tvFileStatus.setText(statusText);
-            tvFileStatus.setTextColor(textColor);
-        }
-
-        if (navHeaderFileStatus != null) {
-            navHeaderFileStatus.setText(statusText);
-            navHeaderFileStatus.setTextColor(textColor);
-        }
-    }
-
-    /**
-     * 导出精简数据
+     * 导出指纹库（简化版，仅导出指纹列表）
      */
     private void exportSimplifiedData() {
         if (currentEditingFile == null) {
-            Toast.makeText(this, "请先选择或创建一个文件", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "请先选择或创建一个指纹库文件", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -277,21 +239,15 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             return;
         }
 
-        Bitmap originalImage = imageHandler.getOriginalImage();
-        String imageName = "map_image.png";
-        int imageWidth = originalImage != null ? originalImage.getWidth() : 0;
-        int imageHeight = originalImage != null ? originalImage.getHeight() : 0;
-
-        String exportFileName = "simplified_" + currentEditingFile;
-
-        boolean success = mapFileModule.exportSimplifiedFingerprints(
-                exportFileName, fingerprints, imageName, imageWidth, imageHeight);
+        // 导出文件名（基于当前编辑的文件名）
+        String exportFileName = "export_" + currentEditingFile;
+        boolean success = mapFileModule.exportFingerprints(exportFileName, fingerprints);
 
         if (success) {
-            Toast.makeText(this, "精简数据导出成功", Toast.LENGTH_SHORT).show();
-            tvResult.setText("精简数据已导出: " + exportFileName);
+            Toast.makeText(this, "指纹库导出成功", Toast.LENGTH_SHORT).show();
+            tvResult.setText("指纹库已导出: " + exportFileName);
         } else {
-            Toast.makeText(this, "精简数据导出失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "指纹库导出失败", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -300,13 +256,13 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
      */
     private void showFileManagementDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("文件管理");
+        builder.setTitle("指纹库管理");
 
         String[] options = {
-                "创建新文件",
-                "导入现有文件",
-                "更新当前文件",
-                "查看所有文件"
+                "创建新指纹库",
+                "导入现有指纹库",
+                "更新当前指纹库",
+                "查看所有指纹库"
         };
 
         builder.setItems(options, (dialog, which) -> {
@@ -331,14 +287,14 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 创建新文件（修复：正确初始化MapData并处理保存结果）
+     * 创建新指纹库文件
      */
     private void createNewFile() {
         EditText etFileName = new EditText(this);
-        etFileName.setHint("请输入文件名（不含.json后缀）");
+        etFileName.setHint("请输入指纹库文件名（不含.json后缀）");
 
         new AlertDialog.Builder(this)
-                .setTitle("创建新文件")
+                .setTitle("创建新指纹库")
                 .setView(etFileName)
                 .setPositiveButton("创建", (dialog, which) -> {
                     String fileName = etFileName.getText().toString().trim();
@@ -347,27 +303,20 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                         return;
                     }
 
+                    // 确保文件名以.json结尾
                     if (!fileName.endsWith(".json")) {
                         fileName += ".json";
                     }
 
-                    MapData emptyData = new MapData();
-                    emptyData.setFileName(fileName.replace(".json", ""));
-                    emptyData.setPoints(new ArrayList<>());
-
-                    MapData.GridConfig gridConfig = new MapData.GridConfig();
-                    gridConfig.setShow(false);
-                    gridConfig.setScale(50);
-                    emptyData.setGridConfig(gridConfig);
-
-                    boolean isSaved = mapFileModule.saveMapData(fileName, emptyData);
+                    // 保存空指纹库（后续可添加指纹）
+                    boolean isSaved = mapFileModule.saveFingerprints(fileName, new ArrayList<>());
                     if (isSaved) {
                         currentEditingFile = fileName;
-                        mapFileModule.setCurrentMapData(emptyData);
+                        fingerprintManager.clearAllFingerprints(); // 清空当前指纹库
                         updateFileStatusDisplay();
-                        Toast.makeText(this, "文件创建成功", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "指纹库创建成功", Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(this, "文件创建失败", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "指纹库创建失败", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("取消", null)
@@ -375,45 +324,46 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 导入现有文件
+     * 导入现有指纹库文件
      */
     private void importExistingFile() {
-        mapFileModule.importJsonFile(this, importLauncher);
+        mapFileModule.importFingerprintFile(importLauncher);
     }
 
     /**
-     * 更新当前文件
+     * 更新当前指纹库文件（覆盖保存）
      */
     private void updateCurrentFile() {
         if (currentEditingFile == null) {
-            Toast.makeText(this, "请先选择或创建一个文件", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "请先选择或创建一个指纹库文件", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        MapData currentData = collectCurrentMapData();
-        if (mapFileModule.updateCurrentMapData(currentData)) {
-            Toast.makeText(this, "文件更新成功", Toast.LENGTH_SHORT).show();
+        List<WifiFingerprint> currentFingerprints = fingerprintManager.getAllFingerprints();
+        boolean success = mapFileModule.saveFingerprints(currentEditingFile, currentFingerprints);
+        if (success) {
+            Toast.makeText(this, "指纹库更新成功", Toast.LENGTH_SHORT).show();
         } else {
-            Toast.makeText(this, "文件更新失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "指纹库更新失败", Toast.LENGTH_SHORT).show();
         }
     }
 
     /**
-     * 查看所有文件
+     * 查看所有指纹库文件
      */
     private void viewAllFiles() {
-        List<String> fileNames = mapFileModule.getAllMapFileNames();
+        List<String> fileNames = mapFileModule.getAllFingerprintFileNames();
         if (fileNames.isEmpty()) {
-            Toast.makeText(this, "没有找到任何地图文件", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "没有找到任何指纹库文件", Toast.LENGTH_SHORT).show();
             return;
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("选择要编辑的文件");
+        builder.setTitle("选择要编辑的指纹库");
 
         builder.setItems(fileNames.toArray(new String[0]), (dialog, which) -> {
             String selectedFile = fileNames.get(which);
-            loadMapFile(selectedFile);
+            loadFingerprintFile(selectedFile); // 加载选中的指纹库
         });
 
         builder.setNegativeButton("取消", null);
@@ -421,19 +371,19 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 加载地图文件
+     * 加载指纹库文件
      */
-    private void loadMapFile(String fileName) {
-        MapData mapData = mapFileModule.loadMapData(fileName);
-        if (mapData != null) {
+    private void loadFingerprintFile(String fileName) {
+        List<WifiFingerprint> fingerprints = mapFileModule.loadFingerprints(fileName);
+        if (fingerprints != null) {
             fingerprintManager.clearAllFingerprints();
-            fingerprintManager.importFromMapData(mapData);
+            fingerprintManager.loadFromFile(fingerprints); // 加载指纹到管理器
             currentEditingFile = fileName;
             updateFileStatusDisplay();
-            imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints());
-            Toast.makeText(this, "文件加载成功", Toast.LENGTH_SHORT).show();
+            imageHandler.drawAllMarkers(fingerprints); // 在地图上绘制所有指纹标记
+            Toast.makeText(this, "指纹库加载成功（共" + fingerprints.size() + "条指纹）", Toast.LENGTH_SHORT).show();
         } else {
-            Toast.makeText(this, "文件加载失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "指纹库加载失败", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -448,47 +398,16 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                 return path.substring(lastSlash + 1);
             }
         }
-        return "imported_map.json";
+        return "imported_fingerprints.json";
     }
 
-    /**
-     * 初始化网格控制模块
-     */
-    private void initGridControl() {
-        CheckBox cbShowGrid = findViewById(R.id.cbShowGrid);
-        SeekBar sbGridSize = findViewById(R.id.sbGridSize);
-        TextView tvGridSize = findViewById(R.id.tvGridSize);
 
-        MapData.GridConfig savedConfig = getSavedGridConfig();
 
-        gridControlModule = new GridControlModule(cbShowGrid, sbGridSize, tvGridSize, savedConfig);
-
-        gridControlModule.setOnGridChangeListener(config -> {
-            if (imageHandler != null) {
-                imageHandler.setGridConfig(config);
-                List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
-                if (!fingerprints.isEmpty()) {
-                    imageHandler.drawAllMarkers(fingerprints);
-                }
-            }
-        });
-    }
-
-    /**
-     * 从保存的数据中获取网格配置
-     */
-    private MapData.GridConfig getSavedGridConfig() {
-        MapData.GridConfig config = new MapData.GridConfig();
-        config.setShow(false);
-        config.setScale(50);
-        return config;
-    }
-
-    // 查看导出文件
+    // 查看导出文件目录
     private void viewExportedFiles() {
         try {
             if (mapFileModule != null) {
-                mapFileModule.openSavedFilesDirectory();
+                mapFileModule.openExportedDirectory();
                 Toast.makeText(this, "正在打开导出文件目录", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception e) {
@@ -496,7 +415,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         }
     }
 
-    // 导入JSON文件（修复：正确处理导入逻辑）
+    // 导入JSON格式的指纹库文件
     private void importJsonFile() {
         try {
             if (mapFileModule != null && importLauncher != null) {
@@ -507,50 +426,6 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             }
         } catch (Exception e) {
             Toast.makeText(this, "无法导入文件：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // 保存当前地图
-    private void saveCurrentMap() {
-        showCustomFileNameDialog();
-    }
-
-    /**
-     * 将指纹列表转换为MapData.PointData列表
-     */
-    private List<MapData.PointData> convertFingerprintsToPointData(List<WifiFingerprint> fingerprints) {
-        List<MapData.PointData> pointDataList = new ArrayList<>();
-        for (WifiFingerprint fp : fingerprints) {
-            MapData.PointData pointData = new MapData.PointData();
-            pointData.setSpecial(!TextUtils.isEmpty(fp.getLabel()));
-            if (pointData.isSpecial()) {
-                pointData.setLabel(fp.getLabel());
-            } else {
-                pointData.setPath(fp.getPath());
-            }
-            pointData.setX((float) fp.getPixelX());
-            pointData.setY((float) fp.getPixelY());
-            pointDataList.add(pointData);
-        }
-        return pointDataList;
-    }
-
-    /**
-     * 保存地图数据到文件
-     */
-    private void saveMapToFile(String fileName) {
-        MapData mapData = collectCurrentMapData();
-        if (mapData != null && mapFileModule != null) {
-            boolean success = mapFileModule.saveMapData(fileName, mapData);
-            if (success) {
-                Toast.makeText(this, "地图保存成功：" + fileName, Toast.LENGTH_SHORT).show();
-                tvResult.setText("地图保存成功：\n文件名：" + fileName +
-                        "\n点位数量：" + mapData.getPoints().size());
-            } else {
-                Toast.makeText(this, "地图保存失败", Toast.LENGTH_SHORT).show();
-            }
-        } else {
-            Toast.makeText(this, "无地图数据可保存", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -571,7 +446,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 初始化导入JSON的结果监听器
+     * 初始化导入指纹库的结果监听器
      */
     private void initImportLauncher() {
         importLauncher = registerForActivityResult(
@@ -580,80 +455,22 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         Uri selectedUri = result.getData().getData();
                         if (selectedUri != null) {
-                            MapData importedData = mapFileModule.parseImportedJson(selectedUri, this);
-                            if (importedData != null) {
-                                fingerprintManager.importFromMapData(importedData);
-                                imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints());
-                                mapFileModule.setCurrentMapData(importedData);
-                                currentEditingFile = importedData.getFileName() + ".json";
+                            List<WifiFingerprint> importedFingerprints = mapFileModule.parseImportedFingerprints(selectedUri);
+                            if (importedFingerprints != null && !importedFingerprints.isEmpty()) {
+                                // 导入成功，更新当前指纹库
+                                fingerprintManager.loadFromFile(importedFingerprints);
+                                imageHandler.drawAllMarkers(importedFingerprints);
+                                // 以导入的文件名作为当前编辑文件
+                                currentEditingFile = getFileNameFromUri(selectedUri);
                                 updateFileStatusDisplay();
-                                Toast.makeText(this, "JSON导入成功", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "指纹库导入成功（共" + importedFingerprints.size() + "条）", Toast.LENGTH_SHORT).show();
                             } else {
-                                Toast.makeText(this, "JSON解析失败", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "指纹库解析失败", Toast.LENGTH_SHORT).show();
                             }
                         }
                     }
                 }
         );
-    }
-
-    /**
-     * 自定义文件名对话框
-     */
-    private void showCustomFileNameDialog() {
-        EditText etFileName = new EditText(this);
-        etFileName.setHint("请输入地图文件名（自动补全.json）");
-        etFileName.setPadding(32, 16, 32, 16);
-
-        String suggestedName = generateSuggestedFileName();
-        etFileName.setText(suggestedName);
-
-        new AlertDialog.Builder(this)
-                .setTitle("自定义保存地图")
-                .setView(etFileName)
-                .setPositiveButton("确认保存", (dialog, which) -> {
-                    String fileName = etFileName.getText().toString().trim();
-                    if (TextUtils.isEmpty(fileName)) {
-                        Toast.makeText(this, "文件名不能为空", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    if (!fileName.endsWith(".json")) {
-                        fileName += ".json";
-                    }
-                    saveMapToFile(fileName);
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    /**
-     * 生成建议的文件名
-     */
-    private String generateSuggestedFileName() {
-        String zone = spinnerZone.getSelectedItem().toString();
-        int floor = Integer.parseInt(spinnerFloor.getSelectedItem().toString());
-        return String.format("%s_F%d_%s", zone, floor,
-                new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()));
-    }
-
-    /**
-     * 收集当前地图数据
-     */
-    private MapData collectCurrentMapData() {
-        MapData data = new MapData();
-        List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
-        data.setPoints(convertFingerprintsToPointData(fingerprints));
-
-        if (gridControlModule != null) {
-            data.setGridConfig(gridControlModule.getGridConfig());
-        } else {
-            MapData.GridConfig gridConfig = new MapData.GridConfig();
-            gridConfig.setShow(false);
-            gridConfig.setScale(50);
-            data.setGridConfig(gridConfig);
-        }
-
-        return data;
     }
 
     /**
@@ -681,7 +498,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         rgPointType = findViewById(R.id.rgPointType);
         tvPermissionTip = findViewById(R.id.tvPermissionTip);
 
-        // 初始化Spinner
+        // 初始化Spinner（楼层和区域）
         spinnerFloor = findViewById(R.id.spinnerFloor);
         spinnerZone = findViewById(R.id.spinnerZone);
 
@@ -702,7 +519,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         btnOneClickSave.setEnabled(false);
         btnShowAllMarkers.setEnabled(false);
 
-        // 点位类型切换监听
+        // 点位类型切换监听（特殊点/普通点）
         rgPointType.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId == R.id.rbSpecialPoint) {
                 etLabel.setVisibility(View.VISIBLE);
@@ -717,47 +534,40 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 初始化工具类（修复：赋值成员变量，避免空指针）
+     * 初始化工具类（适配简化后的模块）
      */
     private void initManagers() {
         permissionManager = new PermissionManager(this);
         imageView = findViewById(R.id.imageView);
-        imageHandler = new ImageHandler(this, findViewById(R.id.imageView));
-        this.wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
-        coordinateManager = new CoordinateManager(imageHandler);
-        permissionManager = new PermissionManager(this);
-        fingerprintManager = new FingerprintManager();
-        mapFileModule = new MapFileModule(this, fingerprintManager);
-        wifiLocationManager = new WifiLocationManager(this, wifiManager, fingerprintManager);
-        wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        imageHandler = new ImageHandler(this, imageView); // 用于显示固定地图和指纹标记
+        wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+        coordinateManager = new CoordinateManager(imageHandler); // 处理地图坐标转换
+        fingerprintManager = new FingerprintManager(); // 指纹管理
+        mapFileModule = new MapFileModule(this); // 指纹库文件管理（仅依赖Context）
+        wifiLocationManager = new WifiLocationManager(this, wifiManager, fingerprintManager); // 定位逻辑
+        wifiScanner = new WifiScanner(this, wifiManager); // WiFi扫描
 
+        // 绑定控件引用
         btnManageFingerprints = findViewById(R.id.btnManageFingerprints);
         btnExport = findViewById(R.id.btnExport);
         btnRealTimeLocate = findViewById(R.id.btnRealTimeLocate);
         btnShowAllMarkers = findViewById(R.id.btnShowAllMarkers);
         tvResult = findViewById(R.id.tvResult);
-
-        CheckBox cbShowGrid = findViewById(R.id.cbShowGrid);
-        SeekBar sbGridSize = findViewById(R.id.sbGridSize);
-        TextView tvGridSize = findViewById(R.id.tvGridSize);
-        RadioGroup rgPointType = findViewById(R.id.rgPointType);
-        etPath = findViewById(R.id.etPath);
-        etLabel = findViewById(R.id.etLabel);
     }
 
     /**
      * 设置事件监听
      */
     private void setListeners() {
-        // 导入图片
+        // 导入固定地图
         btnImportImage.setOnClickListener(v -> handleImportImage());
         // 扫描WiFi
         scanButton.setOnClickListener(v -> handleScanWifi());
-        // 选择WiFi
+        // 选择WiFi（手动筛选）
         btnSelectWifi.setOnClickListener(v -> showWifiSelectDialog());
-        // 管理指纹库
+        // 管理指纹库（查看/编辑/删除指纹）
         btnManageFingerprints.setOnClickListener(v -> showFingerprintListDialog());
-        // 一键保存
+        // 一键保存指纹（使用筛选后的所有WiFi）
         btnOneClickSave.setOnClickListener(v -> {
             if (filteredWifis != null) {
                 saveFingerprintToPixel(filteredWifis);
@@ -765,97 +575,38 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                 Toast.makeText(this, "请先完成WiFi扫描", Toast.LENGTH_SHORT).show();
             }
         });
+        // 更新当前文件按钮
         Button btnUpdateCurrentFile = findViewById(R.id.btnUpdateCurrentFile);
         if (btnUpdateCurrentFile != null) {
-            btnUpdateCurrentFile.setOnClickListener(v -> updateCurrentMapFile());
+            btnUpdateCurrentFile.setOnClickListener(v -> updateCurrentFile());
         }
+        // 文件管理按钮
         Button btnFileManager = findViewById(R.id.btnOpenDrawer);
         btnFileManager.setOnClickListener(v -> showFileManagementDialog());
-        // 导出指纹
+        // 导出指纹库
         btnExport.setOnClickListener(v -> {
             String result = fingerprintManager.exportFingerprints();
-            Toast.makeText(this, result, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "指纹库已转为JSON", Toast.LENGTH_LONG).show();
             tvResult.setText("导出结果：\n" + result);
         });
-        // 查看所有标记
+        // 查看所有标记（在地图上显示所有指纹）
         btnShowAllMarkers.setOnClickListener(v -> {
             List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
             if (fingerprints.isEmpty()) {
-                Toast.makeText(this, "没有已绑定的坐标", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "没有已保存的指纹", Toast.LENGTH_SHORT).show();
                 return;
             }
             imageHandler.drawAllMarkers(fingerprints);
-            tvResult.setText("已显示所有坐标，共" + fingerprints.size() + "个");
+            tvResult.setText("已显示所有指纹，共" + fingerprints.size() + "个");
         });
         // 实时定位
         btnRealTimeLocate.setOnClickListener(v -> handleRealTimeLocate());
-        // 图片触摸监听
+        // 图片触摸监听（获取坐标或编辑指纹）
         setImageTouchListener();
     }
 
     /**
-     * 更新当前地图文件
-     */
-    private void updateCurrentMapFile() {
-        if (mapFileModule == null) {
-            Toast.makeText(this, "文件模块未初始化", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        MapData currentData = collectCurrentMapData();
-        if (currentData.getPoints().isEmpty()) {
-            Toast.makeText(this, "无地图数据可更新", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        boolean success = mapFileModule.updateCurrentMapData(currentData);
-        if (success) {
-            Toast.makeText(this, "地图文件更新成功", Toast.LENGTH_SHORT).show();
-            tvResult.setText("地图文件已更新\n点位数量：" + currentData.getPoints().size());
-        } else {
-            Toast.makeText(this, "地图文件更新失败", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    /**
-     * 显示指纹点列表对话框
-     */
-    private void showFingerprintListDialog() {
-        List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
-        if (fingerprints == null || fingerprints.isEmpty()) {
-            Toast.makeText(this, "指纹库为空，请添加指纹点", Toast.LENGTH_SHORT).show();
-            tvResult.setText("当前没有保存任何指纹点");
-            return;
-        }
-
-        CharSequence[] items = new CharSequence[fingerprints.size()];
-        for (int i = 0; i < fingerprints.size(); i++) {
-            WifiFingerprint fp = fingerprints.get(i);
-            String displayText;
-            if (fp.getLabel() != null && !fp.getLabel().isEmpty()) {
-                displayText = String.format("特殊点：%s (%.0f, %.0f) - F%d",
-                        fp.getLabel(), fp.getPixelX(), fp.getPixelY(), fp.getFloor());
-            } else {
-                String path = fp.getPath() == null || fp.getPath().isEmpty() ? "未标注距离" : fp.getPath();
-                displayText = String.format("普通点：%s (%.0f, %.0f) - F%d",
-                        path, fp.getPixelX(), fp.getPixelY(), fp.getFloor());
-            }
-            items[i] = displayText;
-        }
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("选择要管理的指纹点（共" + fingerprints.size() + "个）");
-        builder.setItems(items, (dialog, which) -> {
-            WifiFingerprint selectedFp = fingerprints.get(which);
-            showFingerprintEditDialog(selectedFp);
-        });
-        builder.setNegativeButton("取消", (dialog, which) -> dialog.dismiss());
-        AlertDialog dialog = builder.create();
-        dialog.show();
-    }
-
-    /**
-     * 处理图片导入
+     * 处理图片导入（固定地图）
      */
     private void handleImportImage() {
         if (permissionManager == null) {
@@ -873,7 +624,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
                 @Override
                 public void onPermissionDenied() {
-                    Toast.makeText(MainActivity.this, "需要存储权限才能导入图片", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "需要存储权限才能导入地图", Toast.LENGTH_SHORT).show();
                 }
             });
         } else {
@@ -884,7 +635,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 处理WiFi扫描（修复：正确调用扫描方法）
+     * 处理WiFi扫描
      */
     private void handleScanWifi() {
         if (isScanning) {
@@ -900,10 +651,9 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             @Override
             public void onPermissionGranted() {
                 if (wifiLocationManager != null && !wifiLocationManager.isLocationEnabled()) {
-                    showLocationServiceDialog();
+                    showLocationServiceDialog(); // 提示开启位置服务
                     return;
                 }
-
                 startScanning();
             }
 
@@ -913,28 +663,11 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                 scanButton.setEnabled(false);
                 btnSelectWifi.setEnabled(false);
                 btnOneClickSave.setEnabled(false);
-                // 调用带回调的扫描方法（当前类实现了ScanCallback）
+                // 执行多次扫描
                 wifiScanner.performMultipleScans(
                         MIN_SCAN_COUNT,
                         3000,  // 间隔3秒
-                        new WifiScanner.ScanCallback() {  // 第三个参数：实现回调接口
-                            @Override
-                            public void onMultipleScansComplete(List<List<ScanResult>> allScanResults) {
-                                // 多次扫描完成后调用：处理扫描结果
-                                Log.d("MainActivity", "多次扫描完成，共" + allScanResults.size() + "轮结果");
-                                // 可以在这里调用 FingerprintManager.filterAndSortWifi 处理结果
-                                List<FilteredWifi> filteredWifis = FingerprintManager.filterAndSortWifi(allScanResults);
-                                // 后续逻辑：比如显示结果、保存指纹等
-                            }
-
-                            @Override
-                            public void onPermissionDenied() {
-                                // 权限被拒绝时调用：提示用户授权
-                                runOnUiThread(() ->
-                                        Toast.makeText(MainActivity.this, "需要位置权限才能扫描WiFi", Toast.LENGTH_SHORT).show()
-                                );
-                            }
-                        }
+                        MainActivity.this // 当前类作为回调
                 );
             }
 
@@ -978,14 +711,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         }
     }
 
-    // 显示Toast
-    void showToast(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-    }
-
-    /**
-     * 处理实时定位
-     */
+    // 处理实时定位
     private void handleRealTimeLocate() {
         if (imageHandler == null || imageHandler.getOriginalImage() == null) {
             Toast.makeText(this, "请先导入平面图", Toast.LENGTH_SHORT).show();
@@ -1027,15 +753,15 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 显示WiFi选择对话框
+     * 显示WiFi选择对话框（手动筛选要保存的WiFi）
      */
     private void showWifiSelectDialog() {
         if (multipleScans.size() < MIN_SCAN_COUNT) {
             Toast.makeText(this, "请先完成" + MIN_SCAN_COUNT + "次扫描", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (filteredWifis == null && fingerprintManager != null) {
-            filteredWifis = fingerprintManager.filterAndSortWifi(multipleScans);
+        if (filteredWifis == null) {
+            filteredWifis = FingerprintManager.filterAndSortWifi(multipleScans);
         }
         if (filteredWifis == null || filteredWifis.isEmpty()) {
             Toast.makeText(this, "无可用WiFi信号", Toast.LENGTH_SHORT).show();
@@ -1051,14 +777,14 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
         CheckBox[] checkBoxes = new CheckBox[filteredWifis.size()];
         selectedWifis.clear();
-        int autoSelectCount = Math.min(6, filteredWifis.size());
+        int autoSelectCount = Math.min(6, filteredWifis.size()); // 自动选中前6个强信号
 
         for (int i = 0; i < filteredWifis.size(); i++) {
             FilteredWifi wifi = filteredWifis.get(i);
             checkBoxes[i] = new CheckBox(this);
             checkBoxes[i].setText(String.format("%s（MAC：%s，信号：%ddBm）",
                     wifi.getSsid(),
-                    wifi.getBssid().substring(12),
+                    wifi.getBssid().substring(12), // 简化MAC显示
                     wifi.getRssi()));
             checkBoxes[i].setTextSize(14);
             layout.addView(checkBoxes[i]);
@@ -1093,7 +819,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 保存指纹到像素点
+     * 保存指纹到指定坐标（核心功能）
      */
     private void saveFingerprintToPixel(List<FilteredWifi> wifis) {
         if (!checkBasicConditions()) return;
@@ -1114,18 +840,20 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         String label = etLabel.getText().toString().trim();
         String path = etPath.getText().toString().trim();
 
+        // 校验：特殊点和普通点不能同时为空或同时填写
         if ((label.isEmpty() && path.isEmpty()) || (!label.isEmpty() && !path.isEmpty())) {
             Toast.makeText(this, "请仅填写一项：特殊点名称（label）或普通点距离（path）", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        boolean success = fingerprintManager != null &&
-                fingerprintManager.saveFingerprint(x, y, floor, zone, label, path, wifis);
+        // 保存指纹到管理器
+        boolean success = fingerprintManager.saveFingerprint(x, y, floor, zone, label, path, wifis);
 
         if (success) {
             String tip = label.isEmpty() ? "普通点（" + path + "）" : "特殊点（" + label + "）";
             Toast.makeText(this, tip + "保存成功：(" + (int) x + "," + (int) y + ")", Toast.LENGTH_SHORT).show();
 
+            // 更新UI显示
             StringBuilder sb = new StringBuilder();
             sb.append("✅ 指纹点已保存\n");
             sb.append("坐标: (").append((int) x).append(", ").append((int) y).append(")\n");
@@ -1135,15 +863,18 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             sb.append("WiFi数量: ").append(wifis.size()).append("个");
 
             tvResult.setText(sb.toString());
+            // 清空输入框
             etLabel.setText("");
             etPath.setText("");
+            // 在地图上绘制新保存的指纹
+            imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints());
         } else {
             Toast.makeText(this, "保存失败，请重试", Toast.LENGTH_SHORT).show();
         }
     }
 
     /**
-     * 检查基础条件
+     * 检查保存指纹的基础条件
      */
     private boolean checkBasicConditions() {
         if (imageHandler == null || imageHandler.getOriginalImage() == null) {
@@ -1151,9 +882,13 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             return false;
         }
 
-        if (etPixelX.getText().toString().isEmpty() ||
-                etPixelY.getText().toString().isEmpty()) {
+        if (etPixelX.getText().toString().isEmpty() || etPixelY.getText().toString().isEmpty()) {
             Toast.makeText(this, "请点击图片获取像素坐标", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+
+        if (currentEditingFile == null) {
+            Toast.makeText(this, "请先创建或导入指纹库文件", Toast.LENGTH_SHORT).show();
             return false;
         }
 
@@ -1178,31 +913,44 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 验证保存前条件
+     * 显示指纹列表对话框（管理已保存的指纹）
      */
-    private boolean validateBeforeSave() {
-        if (selectedWifis.size() < MIN_SELECT_WIFI_COUNT) {
-            showToast("请至少选择3个WiFi");
-            return false;
+    private void showFingerprintListDialog() {
+        List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
+        if (fingerprints == null || fingerprints.isEmpty()) {
+            Toast.makeText(this, "指纹库为空，请添加指纹点", Toast.LENGTH_SHORT).show();
+            tvResult.setText("当前没有保存任何指纹点");
+            return;
         }
 
-        float x = Float.parseFloat(etPixelX.getText().toString());
-        float y = Float.parseFloat(etPixelY.getText().toString());
-        if (!coordinateManager.isValidCoordinate(x, y)) {
-            showToast("坐标超出地图范围");
-            return false;
+        CharSequence[] items = new CharSequence[fingerprints.size()];
+        for (int i = 0; i < fingerprints.size(); i++) {
+            WifiFingerprint fp = fingerprints.get(i);
+            String displayText;
+            if (fp.getLabel() != null && !fp.getLabel().isEmpty()) {
+                displayText = String.format("特殊点：%s (%.0f, %.0f) - F%d",
+                        fp.getLabel(), fp.getPixelX(), fp.getPixelY(), fp.getFloor());
+            } else {
+                String path = fp.getPath() == null || fp.getPath().isEmpty() ? "未标注距离" : fp.getPath();
+                displayText = String.format("普通点：%s (%.0f, %.0f) - F%d",
+                        path, fp.getPixelX(), fp.getPixelY(), fp.getFloor());
+            }
+            items[i] = displayText;
         }
 
-        boolean isSpecialPoint = rgPointType.getCheckedRadioButtonId() == R.id.rbSpecialPoint;
-        if (isSpecialPoint && TextUtils.isEmpty(etLabel.getText())) {
-            showToast("特殊点请填写标签");
-            return false;
-        }
-        return true;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择要管理的指纹点（共" + fingerprints.size() + "个）");
+        builder.setItems(items, (dialog, which) -> {
+            WifiFingerprint selectedFp = fingerprints.get(which);
+            showFingerprintEditDialog(selectedFp); // 编辑选中的指纹
+        });
+        builder.setNegativeButton("取消", (dialog, which) -> dialog.dismiss());
+        AlertDialog dialog = builder.create();
+        dialog.show();
     }
 
     /**
-     * 显示指纹点编辑对话框
+     * 显示指纹编辑对话框（修改/删除/重新扫描）
      */
     private void showFingerprintEditDialog(WifiFingerprint fingerprint) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -1212,6 +960,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 30, 50, 30);
 
+        // 特殊点名称输入
         EditText etLabelEdit = new EditText(this);
         etLabelEdit.setHint("特殊点名称（如：图书馆a口）");
         etLabelEdit.setText(fingerprint.getLabel());
@@ -1221,6 +970,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         ));
         layout.addView(etLabelEdit);
 
+        // 普通点距离输入
         EditText etPathEdit = new EditText(this);
         etPathEdit.setHint("普通点距离描述（如：距离图书馆a口3米）");
         etPathEdit.setText(fingerprint.getPath());
@@ -1230,6 +980,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         ));
         layout.addView(etPathEdit);
 
+        // 楼层选择
         TextView tvFloor = new TextView(this);
         tvFloor.setText("选择楼层");
         tvFloor.setTextSize(16);
@@ -1246,6 +997,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         }
         layout.addView(spinnerFloorEdit);
 
+        // 区域选择
         TextView tvZone = new TextView(this);
         tvZone.setText("选择区域");
         tvZone.setTextSize(16);
@@ -1262,6 +1014,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         }
         layout.addView(spinnerZoneEdit);
 
+        // 坐标信息（不可编辑）
         TextView tvCoordInfo = new TextView(this);
         tvCoordInfo.setText(String.format("坐标: (%.0f, %.0f) - 不可编辑",
                 fingerprint.getPixelX(),
@@ -1270,6 +1023,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         tvCoordInfo.setPadding(0, 20, 0, 0);
         layout.addView(tvCoordInfo);
 
+        // WiFi数量信息
         TextView tvWifiInfo = new TextView(this);
         tvWifiInfo.setText("包含 " + fingerprint.getFilteredWifis().size() + " 个WiFi信号");
         tvWifiInfo.setTextColor(Color.GRAY);
@@ -1277,44 +1031,48 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
         builder.setView(layout);
 
+        // 保存修改
         builder.setPositiveButton("保存", (dialog, which) -> {
             String newLabel = etLabelEdit.getText().toString().trim();
             String newPath = etPathEdit.getText().toString().trim();
             int newFloor = Integer.parseInt(spinnerFloorEdit.getSelectedItem().toString());
             String newZone = spinnerZoneEdit.getSelectedItem().toString();
 
+            // 校验输入
             if ((newLabel.isEmpty() && newPath.isEmpty()) || (!newLabel.isEmpty() && !newPath.isEmpty())) {
                 Toast.makeText(MainActivity.this, "请仅填写一项：特殊点名称或普通点距离", Toast.LENGTH_SHORT).show();
                 return;
             }
 
+            // 更新指纹信息
             fingerprint.setLabel(newLabel);
             fingerprint.setPath(newPath);
             fingerprint.setFloor(newFloor);
             fingerprint.setZone(newZone);
 
-            boolean success = fingerprintManager != null && fingerprintManager.updateFingerprint(fingerprint);
+            boolean success = fingerprintManager.updateFingerprint(fingerprint);
 
             if (success) {
                 String tip = newLabel.isEmpty() ? "普通点（" + newPath + "）" : "特殊点（" + newLabel + "）";
                 Toast.makeText(MainActivity.this, tip + "更新成功", Toast.LENGTH_SHORT).show();
-                imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints());
+                imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints()); // 刷新地图标记
                 tvResult.setText("已更新：" + tip);
             } else {
                 Toast.makeText(MainActivity.this, "更新失败", Toast.LENGTH_SHORT).show();
             }
         });
 
+        // 删除指纹
         builder.setNegativeButton("删除", (dialog, which) -> {
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("确认删除")
                     .setMessage("确定要删除这个指纹点吗？此操作不可恢复。")
                     .setPositiveButton("删除", (d, w) -> {
-                        boolean success = fingerprintManager != null && fingerprintManager.deleteFingerprint(fingerprint);
+                        boolean success = fingerprintManager.deleteFingerprint(fingerprint);
                         if (success) {
                             String tip = fingerprint.getLabel().isEmpty() ? "普通点" : "特殊点（" + fingerprint.getLabel() + "）";
                             Toast.makeText(MainActivity.this, tip + "删除成功", Toast.LENGTH_SHORT).show();
-                            imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints());
+                            imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints()); // 刷新地图标记
                             tvResult.setText("已删除：" + tip);
                         } else {
                             Toast.makeText(MainActivity.this, "删除失败", Toast.LENGTH_SHORT).show();
@@ -1324,6 +1082,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                     .show();
         });
 
+        // 重新扫描WiFi（更新当前指纹的WiFi信号）
         builder.setNeutralButton("重新扫描WiFi", (dialog, which) -> {
             currentEditingFingerprint = fingerprint;
             startRescanForFingerprint();
@@ -1334,7 +1093,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 重新扫描WiFi（修复：实际执行扫描逻辑）
+     * 重新扫描WiFi并更新指纹
      */
     private void startRescanForFingerprint() {
         if (isScanning) {
@@ -1364,7 +1123,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         tvResult.setText("开始重新扫描WiFi（共" + MIN_SCAN_COUNT + "次，间隔3秒）...\n");
         scanButton.setEnabled(false);
 
-        // 调用多次扫描方法，使用当前类作为回调
+        // 执行多次扫描
         wifiScanner.performMultipleScans(MIN_SCAN_COUNT, 3000, new WifiScanner.ScanCallback() {
 
             @Override
@@ -1395,52 +1154,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 显示指纹库统计信息
-     */
-    private void showStatistics() {
-        if (fingerprintManager == null) return;
-
-        List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
-        if (fingerprints.isEmpty()) {
-            tvResult.setText("📊 指纹库统计：无保存的指纹点");
-            return;
-        }
-
-        StringBuilder stats = new StringBuilder();
-        stats.append("📊 指纹库统计\n");
-        stats.append("总指纹点: ").append(fingerprints.size()).append("个\n");
-
-        int specialCount = 0;
-        int normalCount = 0;
-        for (WifiFingerprint fp : fingerprints) {
-            if (fp.getLabel().isEmpty()) {
-                normalCount++;
-            } else {
-                specialCount++;
-            }
-        }
-        stats.append("特殊点（带名称）: ").append(specialCount).append("个\n");
-        stats.append("普通点（带距离）: ").append(normalCount).append("个\n");
-
-        Map<Integer, Integer> floorStats = new HashMap<>();
-        for (WifiFingerprint fp : fingerprints) {
-            floorStats.put(fp.getFloor(), floorStats.getOrDefault(fp.getFloor(), 0) + 1);
-        }
-        for (Map.Entry<Integer, Integer> entry : floorStats.entrySet()) {
-            stats.append("楼层 ").append(entry.getKey()).append(": ").append(entry.getValue()).append("个\n");
-        }
-
-        int totalWifis = 0;
-        for (WifiFingerprint fp : fingerprints) {
-            totalWifis += fp.getFilteredWifis().size();
-        }
-        stats.append("总WiFi信号: ").append(totalWifis).append("个");
-
-        tvResult.setText(stats.toString());
-    }
-
-    /**
-     * 处理图片点击事件
+     * 图片点击事件（获取坐标或选择指纹）
      */
     private void handleImageClick(float screenX, float screenY) {
         if (imageHandler == null || coordinateManager == null) return;
@@ -1448,24 +1162,27 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         float[] coords = coordinateManager.getCoordinatesFromTouch(screenX, screenY);
         if (coords == null) return;
 
-        List<WifiFingerprint> fingerprints = fingerprintManager != null ? fingerprintManager.getAllFingerprints() : new ArrayList<>();
+        List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
         if (fingerprints.isEmpty()) {
+            // 无指纹时，直接显示点击坐标
             etPixelX.setText(String.valueOf(Math.round(coords[0])));
             etPixelY.setText(String.valueOf(Math.round(coords[1])));
             return;
         }
 
+        // 检查是否点击了已有的指纹标记
         WifiFingerprint clickedFingerprint = coordinateManager.getClickedFingerprint(screenX, screenY, fingerprints);
         if (clickedFingerprint != null) {
-            showFingerprintEditDialog(clickedFingerprint);
+            showFingerprintEditDialog(clickedFingerprint); // 编辑该指纹
         } else {
+            // 未点击指纹，显示当前坐标
             etPixelX.setText(String.valueOf(Math.round(coords[0])));
             etPixelY.setText(String.valueOf(Math.round(coords[1])));
         }
     }
 
     /**
-     * 图片触摸监听
+     * 图片触摸监听（支持缩放、移动、点击）
      */
     private void setImageTouchListener() {
         imageView.setOnTouchListener((v, event) -> {
@@ -1476,53 +1193,6 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             }
             return handled;
         });
-    }
-
-    /**
-     * 实时定位回调接口
-     */
-    public interface LocationCallback {
-        void onLocationUpdate(WifiLocationManager.LocationResult result, String displayText);
-        void onProximityAlert(String message);
-    }
-
-    /**
-     * 带播报功能的实时定位
-     */
-    private void handleRealTimeLocateWithAnnouncement(LocationCallback callback) {
-        if (wifiLocationManager == null) return;
-
-        WifiLocationManager.LocationResult result = wifiLocationManager.startRealTimeLocation();
-        if (result != null) {
-            String displayText = "";
-            List<WifiFingerprint> fingerprints = fingerprintManager != null ? fingerprintManager.getAllFingerprints() : new ArrayList<>();
-            for (WifiFingerprint fp : fingerprints) {
-                if (fp.getPixelX() == result.getX() && fp.getPixelY() == result.getY() &&
-                        fp.getFloor() == result.getFloor()) {
-                    displayText = fp.getLabel().isEmpty() ? fp.getPath() : fp.getLabel();
-                    break;
-                }
-            }
-
-            if (imageHandler != null) {
-                imageHandler.drawLocationMarker((float) result.getX(), (float) result.getY(), displayText);
-            }
-
-            if (callback != null) {
-                callback.onLocationUpdate(result, displayText);
-                if (!displayText.isEmpty()) {
-                    callback.onProximityAlert("当前位置：" + displayText);
-                }
-            }
-
-            tvResult.setText(String.format("定位成功：\n楼层：%d\n坐标：(%.0f,%.0f)\n当前位置：%s",
-                    result.getFloor(),
-                    result.getX(),
-                    result.getY(),
-                    displayText.isEmpty() ? "未标注" : displayText));
-        } else {
-            tvResult.setText("定位失败，未找到匹配的指纹数据");
-        }
     }
 
     /**
@@ -1545,7 +1215,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         }
     }
 
-    // 补充缺失的saveCurrentFingerprint方法（按钮绑定使用）
+    // 保存当前指纹（按钮绑定使用）
     private void saveCurrentFingerprint() {
         if (filteredWifis == null || filteredWifis.isEmpty()) {
             Toast.makeText(this, "请先完成WiFi扫描", Toast.LENGTH_SHORT).show();

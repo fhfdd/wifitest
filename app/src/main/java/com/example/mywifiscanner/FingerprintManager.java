@@ -1,6 +1,5 @@
 package com.example.mywifiscanner;
 
-import android.content.Context;
 import android.net.wifi.ScanResult;
 import android.util.Log;
 
@@ -17,63 +16,12 @@ public class FingerprintManager {
     private static final String TAG = "FingerprintManager";
     private final List<WifiFingerprint> fingerprints = new ArrayList<>(); // 指纹列表
 
-    // 构造方法简化，只保留必要的上下文
+    // 构造方法简化，无依赖
     public FingerprintManager() {
-        // 不再依赖WifiScanner和CoordinateManager
     }
 
-    // ==================== 指纹数据处理 ====================
-    /**
-     * 过滤并排序WiFi信号（合并多次扫描结果，计算平均强度，过滤弱信号）
-     * 改为静态工具方法，不依赖实例状态
-     */
-// 注意：如果FilteredWifi已独立，需改为 List<FilteredWifi>
-    public static List<FilteredWifi> filterAndSortWifi(List<List<ScanResult>> allScans) {
-        List<FilteredWifi> filtered = new ArrayList<>();
-        if (allScans == null || allScans.isEmpty()) {
-            Log.w(TAG, "无扫描结果可处理");
-            return filtered;
-        }
-
-        // 1. 遍历所有扫描结果列表，过滤有效WiFi
-        for (List<ScanResult> scanList : allScans) { // 遍历每次扫描的结果列表
-            if (scanList == null || scanList.isEmpty()) {
-                continue; // 跳过空的子列表
-            }
-            for (ScanResult scan : scanList) { // 遍历单次扫描的每个结果
-                // 过滤条件：BSSID不为空 + 信号强度达标（例如 >= -90）
-                if (scan.BSSID != null && scan.level >= -90) {
-                    String cleanedSsid = scan.SSID.replace("\"", ""); // 去除双引号
-                    filtered.add(new FilteredWifi(
-                            cleanedSsid,  // 清洗后的SSID
-                            scan.BSSID,
-                            scan.level
-                    ));
-                }
-            }
-        }
-
-        // 2. 去重：同一BSSID保留信号最强的记录（可选，根据业务需求）
-        Map<String, FilteredWifi> bssidMap = new HashMap<>();
-        for (FilteredWifi wifi : filtered) {
-            String bssid = wifi.getBssid();
-            // 如果map中已有该BSSID，比较信号强度，保留更强的（rssi值越大信号越强）
-            if (bssidMap.containsKey(bssid)) {
-                FilteredWifi existing = bssidMap.get(bssid);
-                if (wifi.getRssi() > existing.getRssi()) {
-                    bssidMap.put(bssid, wifi); // 替换为更强的信号
-                }
-            } else {
-                bssidMap.put(bssid, wifi); // 首次添加
-            }
-        }
-        // 用去重后的结果替换原列表
-        filtered = new ArrayList<>(bssidMap.values());
-
-        // 3. 排序：按信号强度（rssi）从强到弱排序（值越大信号越强）
-        filtered.sort((wifi1, wifi2) -> Integer.compare(wifi2.getRssi(), wifi1.getRssi()));
-
-        return filtered;
+    public static List<FilteredWifi> filterAndSortWifi(List<List<ScanResult>> allScans, ConfigManager configManager) {
+        return WifiDataProcessor.processMultipleScansWithMax(allScans, configManager);
     }
 
     // ==================== 指纹保存与更新 ====================
@@ -97,7 +45,7 @@ public class FingerprintManager {
         fingerprint.setFilteredWifis(new ArrayList<>(wifis)); // 创建副本防止外部修改
 
         fingerprints.add(fingerprint);
-        Log.d(TAG, "指纹保存成功：" + (label != null ? label : path));
+        Log.d(TAG, "指纹保存成功：" + (label != null && !label.isEmpty() ? label : path));
         return true;
     }
 
@@ -123,7 +71,7 @@ public class FingerprintManager {
             return "[]"; // 空列表返回空JSON数组
         }
 
-        // 构建JSON结构（这里使用字符串拼接示例，实际项目建议用Gson等库）
+        // 构建JSON结构（实际项目建议用Gson等库，此处为示例）
         StringBuilder json = new StringBuilder("[");
         for (int i = 0; i < fingerprints.size(); i++) {
             WifiFingerprint fp = fingerprints.get(i);
@@ -145,21 +93,17 @@ public class FingerprintManager {
                         .append("\"bssid\":\"").append(escapeJson(wifi.getBssid())).append("\",")
                         .append("\"rssi\":").append(wifi.getRssi())
                         .append("}");
-                if (j < wifis.size() - 1) {
-                    json.append(",");
-                }
+                if (j < wifis.size() - 1) json.append(",");
             }
             json.append("]")
                     .append("}");
-            if (i < fingerprints.size() - 1) {
-                json.append(",");
-            }
+            if (i < fingerprints.size() - 1) json.append(",");
         }
         json.append("]");
         return json.toString();
     }
 
-    // 辅助方法：转义JSON中的特殊字符（避免引号冲突）
+    // 辅助方法：转义JSON中的特殊字符
     private String escapeJson(String value) {
         if (value == null) return "";
         return value.replace("\\", "\\\\")
@@ -169,16 +113,6 @@ public class FingerprintManager {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
-    }
-
-    /**
-     * 根据ID查找指纹
-     */
-    public WifiFingerprint findFingerprintById(int id) {
-        if (id >= 0 && id < fingerprints.size()) {
-            return fingerprints.get(id);
-        }
-        return null;
     }
 
     /**
@@ -194,52 +128,25 @@ public class FingerprintManager {
         return removed;
     }
 
-    // ==================== 数据转换方法 ====================
-    /**
-     * 将指纹数据转换为MapData的点位数据
-     */
-    public List<MapData.PointData> convertToPointData() {
-        List<MapData.PointData> pointDataList = new ArrayList<>();
-        for (WifiFingerprint fp : fingerprints) {
-            MapData.PointData pointData = new MapData.PointData();
-            pointData.setSpecial(fp.getLabel() != null && !fp.getLabel().isEmpty());
-            pointData.setLabel(fp.getLabel());
-            pointData.setPath(fp.getPath());
-            pointData.setX((float) fp.getPixelX());
-            pointData.setY((float) fp.getPixelY());
-            pointDataList.add(pointData);
-        }
-        return pointDataList;
-    }
-
-    /**
-     * 从MapData导入指纹数据
-     */
-    public void importFromMapData(MapData data) {
-        if (data == null || data.getPoints() == null) {
-            Log.w(TAG, "无数据可导入");
-            return;
-        }
-
-        fingerprints.clear();
-        for (MapData.PointData point : data.getPoints()) {
-            WifiFingerprint fp = new WifiFingerprint();
-            fp.setPixelX(point.getX());
-            fp.setPixelY(point.getY());
-            fp.setLabel(point.isSpecial() ? point.getLabel() : null);
-            fp.setPath(point.isSpecial() ? null : point.getPath());
-            // 注意：导入的数据可能没有WiFi信号数据，需要后续补充
-            fingerprints.add(fp);
-        }
-        Log.d(TAG, "数据导入完成，共" + fingerprints.size() + "个点位");
-    }
-
     // ==================== 指纹查询 ====================
     /**
-     * 获取所有指纹
+     * 获取所有指纹（返回副本，避免外部修改）
      */
     public List<WifiFingerprint> getAllFingerprints() {
-        return new ArrayList<>(fingerprints); // 返回副本，避免外部修改
+        return new ArrayList<>(fingerprints);
+    }
+
+    /**
+     * 从外部列表加载指纹（用于导入文件）
+     */
+    public void loadFromFile(List<WifiFingerprint> loadedFingerprints) {
+        if (loadedFingerprints == null) {
+            Log.w(TAG, "导入失败：指纹列表为空");
+            return;
+        }
+        fingerprints.clear();
+        fingerprints.addAll(loadedFingerprints);
+        Log.d(TAG, "从文件导入指纹成功，共" + loadedFingerprints.size() + "条");
     }
 
     /**
@@ -269,7 +176,7 @@ public class FingerprintManager {
     }
 
     /**
-     * 获取指纹数量
+     * 获取指纹总数
      */
     public int getFingerprintCount() {
         return fingerprints.size();

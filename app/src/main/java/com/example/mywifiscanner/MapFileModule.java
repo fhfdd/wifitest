@@ -2,297 +2,378 @@ package com.example.mywifiscanner;
 
 import android.content.Context;
 import android.content.Intent;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
 import android.util.Log;
-
-import androidx.activity.result.ActivityResultLauncher;
-
+import android.widget.Toast;
+import androidx.core.content.FileProvider;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 地图文件管理模块：负责地图数据的保存、加载、导入、导出等文件操作
+ * 指纹库文件管理模块：修复权限适配、异常处理、文件校验逻辑
  */
 public class MapFileModule {
     private static final String TAG = "MapFileModule";
-    private static final String MAP_DIR = "wifi_maps"; // 地图文件存储目录
+    private static final String FINGERPRINT_DIR = "WiFi_Fingerprints"; // 应用私有目录子文件夹
     private final Context context;
-    private final FingerprintManager fingerprintManager;
-    private MapData currentMapData; // 当前正在编辑的地图数据
+    private final Gson gson = new Gson();
 
-    // 构造方法：初始化上下文和指纹管理器
-    public MapFileModule(Context context, FingerprintManager fingerprintManager) {
+    public MapFileModule(Context context) {
         this.context = context;
-        this.fingerprintManager = fingerprintManager;
-        // 确保存储目录存在
-        ensureDirExists();
+        ensureDirExists(); // 初始化时确保目录存在
     }
 
-    // 确保存储目录存在
+    /**
+     * 修复：使用应用私有目录（无需额外存储权限），替代公共Downloads目录
+     * 路径：/Android/data/[应用包名]/files/WiFi_Fingerprints/
+     */
+    private File getFingerprintDirectory() {
+        File appFilesDir = context.getExternalFilesDir(null); // 应用私有外部存储目录
+        if (appFilesDir == null) {
+            Log.e(TAG, "应用外部存储目录不可用（可能存储空间不足）");
+            return null;
+        }
+        File fingerprintDir = new File(appFilesDir, FINGERPRINT_DIR);
+        Log.d(TAG, "指纹库目录：" + fingerprintDir.getAbsolutePath());
+        return fingerprintDir;
+    }
+
+    /**
+     * 确保目录存在，若不存在则创建（修复创建失败的场景）
+     */
     private void ensureDirExists() {
-        File dir = new File(context.getFilesDir(), MAP_DIR);
+        File dir = getFingerprintDirectory();
+        if (dir == null) {
+            Toast.makeText(context, "存储目录不可用，无法操作文件", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (!dir.exists()) {
-            dir.mkdirs();
-        }
-    }
-
-    // ==================== 当前地图数据管理 ====================
-    public MapData getCurrentMapData() {
-        return currentMapData;
-    }
-
-    public void setCurrentMapData(MapData currentMapData) {
-        this.currentMapData = currentMapData;
-    }
-
-    // ==================== 地图文件保存 ====================
-    /**
-     * 保存地图数据到文件
-     * @param fileName 文件名（含.json后缀）
-     * @param data 要保存的地图数据
-     * @return 是否保存成功
-     */
-    public boolean saveMapData(String fileName, MapData data) {
-        if (data == null || fileName == null || fileName.isEmpty()) {
-            Log.e(TAG, "保存失败：数据或文件名无效");
-            return false;
-        }
-
-        try {
-            // 序列化MapData为JSON
-            Gson gson = new Gson();
-            String json = gson.toJson(data);
-
-            // 写入文件
-            File file = new File(context.getFilesDir(), MAP_DIR + File.separator + fileName);
-            try (FileOutputStream fos = new FileOutputStream(file)) {
-                fos.write(json.getBytes());
-                Log.d(TAG, "地图保存成功：" + file.getAbsolutePath());
-                // 更新当前地图数据
-                setCurrentMapData(data);
-                return true;
+            boolean created = dir.mkdirs();
+            if (created) {
+                Log.d(TAG, "指纹库目录创建成功：" + dir.getAbsolutePath());
+            } else {
+                Log.e(TAG, "指纹库目录创建失败（可能权限不足或存储空间满）");
+                Toast.makeText(context, "文件目录创建失败，无法保存指纹库", Toast.LENGTH_SHORT).show();
             }
-        } catch (IOException e) {
-            Log.e(TAG, "保存地图失败：" + e.getMessage());
-            return false;
         }
     }
 
-    // ==================== 地图文件加载 ====================
     /**
-     * 从文件加载地图数据
-     * @param fileName 文件名（含.json后缀）
-     * @return 加载的MapData，失败返回null
+     * 修复：解析导入的指纹文件（增强异常处理）
      */
-    public MapData loadMapData(String fileName) {
+    /**
+     * 解析导入的指纹文件（从输入流）- 修复版本
+     */
+    public List<WifiFingerprint> parseImportedFingerprints(InputStream inputStream) {
         try {
-            File file = new File(context.getFilesDir(), MAP_DIR + File.separator + fileName);
-            if (!file.exists()) {
-                Log.e(TAG, "文件不存在：" + fileName);
+            // 读取输入流内容
+            StringBuilder jsonBuilder = new StringBuilder();
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                jsonBuilder.append(new String(buffer, 0, bytesRead, "UTF-8"));
+            }
+
+            String json = jsonBuilder.toString().trim();
+            Log.d(TAG, "解析JSON内容，长度: " + json.length());
+
+            if (json.isEmpty()) {
+                Log.e(TAG, "导入的文件为空");
                 return null;
             }
 
-            // 读取文件内容
-            try (FileInputStream fis = new FileInputStream(file)) {
-                byte[] buffer = new byte[(int) file.length()];
-                fis.read(buffer);
-                String json = new String(buffer);
+            // 使用Gson解析
+            Type type = new TypeToken<List<WifiFingerprint>>(){}.getType();
+            List<WifiFingerprint> fingerprints = gson.fromJson(json, type);
 
-                // 反序列化为MapData
-                Gson gson = new Gson();
-                Type type = new TypeToken<MapData>() {}.getType();
-                MapData data = gson.fromJson(json, type);
-                Log.d(TAG, "地图加载成功：" + fileName);
-                return data;
+            if (fingerprints == null) {
+                Log.e(TAG, "Gson解析返回null");
+                return null;
             }
+
+            Log.d(TAG, "解析导入的指纹库成功，共" + fingerprints.size() + "条指纹");
+            return fingerprints;
+
         } catch (IOException e) {
-            Log.e(TAG, "加载地图失败：" + e.getMessage());
+            Log.e(TAG, "读取文件流失败：" + e.getMessage());
+            return null;
+        } catch (JsonSyntaxException e) {
+            Log.e(TAG, "JSON格式错误，无法解析指纹库：" + e.getMessage());
+            Log.e(TAG, "JSON语法异常位置: " + e.getCause());
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "解析指纹库时发生未知错误：" + e.getMessage());
             return null;
         }
     }
 
-    // ==================== 地图文件列表 ====================
-    /**
-     * 获取所有地图文件名（不含路径，含.json后缀）
-     */
-    public List<String> getAllMapFileNames() {
-        List<String> fileNames = new ArrayList<>();
-        File dir = new File(context.getFilesDir(), MAP_DIR);
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile() && file.getName().endsWith(".json")) {
-                    fileNames.add(file.getName());
+    // ==================== 指纹库保存 ====================
+    public boolean saveFingerprints(String fileName, List<WifiFingerprint> fingerprints) {
+        if (fingerprints == null || fileName == null || fileName.isEmpty()) {
+            Log.e(TAG, "保存失败：指纹列表为空或文件名无效");
+            return false;
+        }
+
+        try {
+            String json = gson.toJson(fingerprints);
+            Log.d(TAG, "准备保存JSON，长度: " + json.length());
+
+            // 确保目录存在
+            File dir = getFingerprintDirectory();
+            if (!dir.exists()) {
+                boolean dirCreated = dir.mkdirs();
+                Log.d(TAG, "创建目录: " + dir.getAbsolutePath() + " 结果: " + dirCreated);
+            }
+
+            File file = new File(dir, fileName);
+            Log.d(TAG, "保存文件路径: " + file.getAbsolutePath());
+
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                fos.write(json.getBytes("UTF-8"));
+                fos.flush();
+                Log.d(TAG, "指纹库保存成功：" + file.getAbsolutePath() + ", 文件大小: " + file.length());
+
+                // 通知系统更新文件
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                    MediaScannerConnection.scanFile(
+                            context,
+                            new String[]{file.getAbsolutePath()},
+                            null,
+                            null
+                    );
                 }
+                return true;
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "保存指纹库失败：" + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // ==================== 指纹库加载 ====================
+    public List<WifiFingerprint> loadFingerprints(String fileName) {
+        try {
+            File file = new File(getFingerprintDirectory(), fileName);
+            Log.d(TAG, "加载文件路径: " + file.getAbsolutePath());
+
+            if (!file.exists()) {
+                Log.e(TAG, "文件不存在：" + fileName);
+                return new ArrayList<>(); // 返回空列表而不是null
+            }
+
+            try (FileInputStream fis = new FileInputStream(file)) {
+                StringBuilder jsonBuilder = new StringBuilder();
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    jsonBuilder.append(new String(buffer, 0, bytesRead, "UTF-8"));
+                }
+
+                String json = jsonBuilder.toString().trim();
+                Log.d(TAG, "加载JSON内容，长度: " + json.length());
+
+                if (json.isEmpty()) {
+                    Log.w(TAG, "文件内容为空");
+                    return new ArrayList<>();
+                }
+
+                Type type = new TypeToken<List<WifiFingerprint>>(){}.getType();
+                List<WifiFingerprint> fingerprints = gson.fromJson(json, type);
+
+                if (fingerprints == null) {
+                    Log.w(TAG, "解析结果为null，返回空列表");
+                    return new ArrayList<>();
+                }
+
+                Log.d(TAG, "指纹库加载成功：" + fileName + "（共" + fingerprints.size() + "条指纹）");
+                return fingerprints;
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "加载指纹库失败：" + e.getMessage());
+            return new ArrayList<>(); // 返回空列表而不是null
+        } catch (JsonSyntaxException e) {
+            Log.e(TAG, "JSON格式错误，无法解析指纹库：" + e.getMessage());
+            return new ArrayList<>(); // 返回空列表而不是null
+        }
+    }
+
+    /**
+     * 修复：获取所有指纹库文件（过滤非JSON文件）
+     */
+    public List<String> getAllFingerprintFileNames() {
+        List<String> fileNames = new ArrayList<>();
+        File dir = getFingerprintDirectory();
+        if (dir == null || !dir.exists()) {
+            Log.e(TAG, "获取文件列表失败：目录不可用");
+            return fileNames;
+        }
+
+        File[] files = dir.listFiles();
+        if (files == null) {
+            Log.w(TAG, "获取文件列表失败：目录为空或无权限");
+            return fileNames;
+        }
+
+        for (File file : files) {
+            if (file.isFile() && file.getName().endsWith(".json")) {
+                fileNames.add(file.getName());
+                Log.d(TAG, "发现指纹库文件：" + file.getName());
             }
         }
         return fileNames;
     }
 
-    // ==================== 地图文件更新 ====================
     /**
-     * 更新当前地图数据（覆盖保存）
+     * 修复：导出指纹库（使用应用私有目录，确保导出成功）
      */
-    public boolean updateCurrentMapData(MapData data) {
-        if (currentMapData == null || data == null) {
-            Log.e(TAG, "更新失败：当前无编辑文件或数据为空");
-            return false;
-        }
-        // 使用当前文件名保存
-        return saveMapData(currentMapData.getFileName() + ".json", data);
-    }
-
-    // ==================== 地图文件导入 ====================
-    /**
-     * 启动文件选择器导入JSON地图文件
-     */
-    public void importJsonFile(Context context, ActivityResultLauncher<Intent> launcher) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/json");
-        launcher.launch(intent);
-    }
-
-    /**
-     * 解析导入的JSON文件为MapData（兼容单个对象和数组格式）
-     */
-    public MapData parseImportedJson(Uri uri, Context context) {
-        InputStream is = null;
-        try {
-            // 1. 读取JSON文件内容（原逻辑不变）
-            is = context.getContentResolver().openInputStream(uri);
-            if (is == null) {
-                Log.e(TAG, "无法打开输入流");
-                return null;
-            }
-            byte[] buffer = new byte[is.available()];
-            is.read(buffer);
-            String json = new String(buffer);
-            Gson gson = new Gson();
-
-            // 2. 先尝试解析为“单个MapData对象”（正常导出的格式）
-            try {
-                Type objectType = new TypeToken<MapData>() {}.getType();
-                MapData singleMapData = gson.fromJson(json, objectType);
-                Log.d(TAG, "解析成功：导入的是单个MapData对象");
-                return singleMapData;
-            } catch (JsonSyntaxException e1) {
-                // 3. 若解析单个对象失败，尝试解析为“MapData数组”（兼容错误格式）
-                Log.w(TAG, "解析单个对象失败，尝试解析为MapData数组", e1);
-                try {
-                    Type arrayType = new TypeToken<List<MapData>>() {}.getType();
-                    List<MapData> mapDataList = gson.fromJson(json, arrayType);
-
-                    // 数组非空则返回第一个元素（符合“单个地图文件”的业务逻辑）
-                    if (mapDataList != null && !mapDataList.isEmpty()) {
-                        Log.d(TAG, "解析成功：导入的是MapData数组，返回第一个元素");
-                        return mapDataList.get(0);
-                    } else {
-                        Log.e(TAG, "解析数组失败：数组为空");
-                        return null;
-                    }
-                } catch (JsonSyntaxException e2) {
-                    // 4. 若数组也解析失败，说明JSON格式完全不匹配
-                    Log.e(TAG, "解析数组也失败，JSON格式错误（既非对象也非数组）", e2);
-                    return null;
-                }
-            }
-
-        } catch (IOException e) {
-            Log.e(TAG, "读取导入文件失败：" + e.getMessage(), e);
-            return null;
-        } finally {
-            // 5. 关闭输入流（避免资源泄漏，原代码遗漏）
-            if (is != null) {
-                try {
-                    is.close();
-                } catch (IOException e) {
-                    Log.w(TAG, "关闭输入流失败", e);
-                }
-            }
-        }
-    }
-
-    // ==================== 地图文件导出 ====================
-    /**
-     * 导出精简的指纹数据（仅包含定位所需信息）
-     */
-    public boolean exportSimplifiedFingerprints(String fileName, List<WifiFingerprint> fingerprints,
-                                                String imageName, int imageWidth, int imageHeight) {
+    public boolean exportFingerprints(String fileName, List<WifiFingerprint> fingerprints) {
         if (fingerprints == null || fingerprints.isEmpty()) {
-            Log.e(TAG, "导出失败：无指纹数据");
+            Log.e(TAG, "导出失败：指纹列表为空");
+            Toast.makeText(context, "无指纹数据可导出", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = "export_fingerprints_" + System.currentTimeMillis() + ".json";
+        } else if (!fileName.endsWith(".json")) {
+            fileName += ".json";
+        }
+
+        File dir = getFingerprintDirectory();
+        if (dir == null || !dir.exists()) {
+            Log.e(TAG, "导出失败：目录不可用");
+            Toast.makeText(context, "文件目录不可用，无法导出", Toast.LENGTH_SHORT).show();
             return false;
         }
 
-        // 构建导出数据（可根据需求定义SimplifiedData类）
-        SimplifiedData exportData = new SimplifiedData();
-        exportData.setImageName(imageName);
-        exportData.setImageWidth(imageWidth);
-        exportData.setImageHeight(imageHeight);
-        exportData.setFingerprints(fingerprints);
-
+        File exportFile = new File(dir, fileName);
         try {
-            Gson gson = new Gson();
-            String json = gson.toJson(exportData);
-
-            // 保存到导出目录
-            File exportDir = new File(context.getExternalFilesDir(null), "exported_wifi");
-            if (!exportDir.exists()) exportDir.mkdirs();
-
-            File file = new File(exportDir, fileName);
-            try (FileOutputStream fos = new FileOutputStream(file)) {
+            String json = gson.toJson(fingerprints);
+            try (FileOutputStream fos = new FileOutputStream(exportFile)) {
                 fos.write(json.getBytes());
-                Log.d(TAG, "导出成功：" + file.getAbsolutePath());
+                fos.flush();
+
+                // 通知系统更新媒体库
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                    MediaScannerConnection.scanFile(
+                            context,
+                            new String[]{exportFile.getAbsolutePath()},
+                            null,
+                            null
+                    );
+                }
+
+                Log.d(TAG, "指纹库导出成功：" + exportFile.getAbsolutePath());
+                // 提示用户文件位置
+                Toast.makeText(context, "导出成功！路径：" + exportFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
                 return true;
             }
         } catch (IOException e) {
-            Log.e(TAG, "导出失败：" + e.getMessage());
+            Log.e(TAG, "导出失败：IO错误", e);
+            Toast.makeText(context, "导出失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "导出失败：未知错误", e);
+            Toast.makeText(context, "导出失败：未知错误", Toast.LENGTH_SHORT).show();
             return false;
         }
     }
 
     /**
-     * 打开导出文件目录
+     * 打开导出目录（修复版：增强兼容性，适配更多文件管理器）
      */
-    public void openSavedFilesDirectory() {
-        File exportDir = new File(context.getExternalFilesDir(null), "exported_wifi");
-        if (!exportDir.exists()) {
-            exportDir.mkdirs();
+    public void openExportedDirectory() {
+        File dir = getFingerprintDirectory();
+        if (dir == null) {
+            Log.e(TAG, "打开目录失败：目录不可用（getFingerprintDirectory返回null）");
+            Toast.makeText(context, "目录不可用，无法打开", Toast.LENGTH_SHORT).show();
+            return;
         }
-        // 跳转到文件管理器
+
+        // 确保目录存在（即使为空也创建）
+        if (!dir.exists() && !dir.mkdirs()) {
+            Log.e(TAG, "打开目录失败：无法创建目录 " + dir.getAbsolutePath());
+            Toast.makeText(context, "无法创建存储目录", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 1. 构建FileProvider的Authority（必须与AndroidManifest中一致）
+        String authority = context.getPackageName() + ".fileprovider";
+        Uri dirUri;
+        try {
+            // 生成目录的Uri（关键：必须与file_paths.xml配置匹配）
+            dirUri = FileProvider.getUriForFile(context, authority, dir);
+            Log.d(TAG, "生成目录Uri：" + dirUri.toString());
+        } catch (IllegalArgumentException e) {
+            // 捕获配置不匹配的错误（最常见的失败原因）
+            Log.e(TAG, "FileProvider配置错误：" + e.getMessage() + "\n请检查file_paths.xml是否正确配置", e);
+            Toast.makeText(context, "文件配置错误，无法打开目录", Toast.LENGTH_SHORT).show();
+            // 显示目录绝对路径，方便用户手动查找
+            Toast.makeText(context, "文件存储路径：" + dir.getAbsolutePath(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // 2. 构建打开目录的Intent（适配多种MIME类型）
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(Uri.fromFile(exportDir), "resource/folder");
+        // 尝试多种MIME类型，提高兼容性
+        intent.setDataAndType(dirUri, "application/vnd.android.document.dir"); // 推荐的目录类型
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // 授予临时读权限
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // 避免在某些应用中启动失败
+
+        // 3. 检查是否有应用能处理该Intent
         if (intent.resolveActivity(context.getPackageManager()) != null) {
-            context.startActivity(intent);
+            try {
+                context.startActivity(intent);
+                return; // 成功启动则返回
+            } catch (Exception e) {
+                Log.e(TAG, "启动文件管理器失败：" + e.getMessage(), e);
+                // 失败则进入备用方案
+            }
         }
-    }
 
-    // 内部类：精简导出数据模型
-    private static class SimplifiedData {
-        private String imageName;
-        private int imageWidth;
-        private int imageHeight;
-        private List<WifiFingerprint> fingerprints;
+        // 4. 备用方案1：尝试用更通用的MIME类型
+        intent.setDataAndType(dirUri, "resource/folder"); // 部分文件管理器支持的类型
+        if (intent.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                context.startActivity(intent);
+                return;
+            } catch (Exception e) {
+                Log.e(TAG, "备用方案1启动失败：" + e.getMessage());
+            }
+        }
 
-        // Getter和Setter
-        public String getImageName() { return imageName; }
-        public void setImageName(String imageName) { this.imageName = imageName; }
-        public int getImageWidth() { return imageWidth; }
-        public void setImageWidth(int imageWidth) { this.imageWidth = imageWidth; }
-        public int getImageHeight() { return imageHeight; }
-        public void setImageHeight(int imageHeight) { this.imageHeight = imageHeight; }
-        public List<WifiFingerprint> getFingerprints() { return fingerprints; }
-        public void setFingerprints(List<WifiFingerprint> fingerprints) { this.fingerprints = fingerprints; }
+        // 5. 备用方案2：打开目录的上级目录（应用外部私有根目录）
+        File parentDir = context.getExternalFilesDir(null);
+        if (parentDir != null && parentDir.exists()) {
+            Uri parentUri = FileProvider.getUriForFile(context, authority, parentDir);
+            intent.setDataAndType(parentUri, "application/vnd.android.document.dir");
+            if (intent.resolveActivity(context.getPackageManager()) != null) {
+                try {
+                    context.startActivity(intent);
+                    Toast.makeText(context, "请在“WiFi_Fingerprints”文件夹中查找文件", Toast.LENGTH_SHORT).show();
+                    return;
+                } catch (Exception e) {
+                    Log.e(TAG, "备用方案2启动失败：" + e.getMessage());
+                }
+            }
+        }
+
+        // 6. 最终方案：提示用户手动查找（确保用户能找到文件）
+        Log.w(TAG, "所有方案均失败，提示用户手动查找");
+        Toast.makeText(context, "无法自动打开目录，请手动访问：", Toast.LENGTH_SHORT).show();
+        // 显示完整路径（应用私有目录路径格式：/Android/data/[你的包名]/files/WiFi_Fingerprints/）
+        Toast.makeText(context, dir.getAbsolutePath(), Toast.LENGTH_LONG).show();
     }
 }

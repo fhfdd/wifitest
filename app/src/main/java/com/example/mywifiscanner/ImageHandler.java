@@ -11,15 +11,17 @@ import android.graphics.PointF;
 import android.net.Uri;
 import android.widget.ImageView;
 import android.widget.Toast;
+
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ImageHandler {
-    private boolean showGrid = false;
+    private boolean showGrid = false; // 控制是否显示网格（本地变量，替代MapData配置）
+    private int gridSize = 50; // 网格大小（默认50像素，替代MapData配置）
     private Context context;
-    private ImageView imageView; // 初始可能为null，后续由MainUI设置
+    private ImageView imageView; // 显示图片的控件
     private Bitmap originalImage; // 原始图片
     // 缩放相关变量
     private Matrix matrix = new Matrix();
@@ -31,15 +33,14 @@ public class ImageHandler {
     private static final int DRAG = 1;
     private static final int ZOOM = 2;
     private int mode = NONE;
-    private MapData.GridConfig gridConfig = new MapData.GridConfig();
-    private Paint gridPaint;
+    private Paint gridPaint; // 网格画笔
 
-    // 无参构造（ServiceLocator初始化用）
+    // 无参构造（初始化用）
     public ImageHandler(Context context) {
         this.context = context;
     }
 
-    // 带ImageView的构造（MainUI初始化用）
+    // 带ImageView的构造（关联显示控件）
     public ImageHandler(Context context, ImageView imageView) {
         this.context = context;
         this.imageView = imageView;
@@ -48,7 +49,7 @@ public class ImageHandler {
         }
     }
 
-    // 补充：设置ImageView（解决ServiceLocator初始化时ImageView为null的问题）
+    // 设置ImageView（后续关联控件用）
     public void setImageView(ImageView imageView) {
         this.imageView = imageView;
         if (imageView != null) {
@@ -56,16 +57,14 @@ public class ImageHandler {
         }
     }
 
-    public void setGridConfig(MapData.GridConfig config) {
-        this.gridConfig = config;
+    // 控制网格显示（替代原setGridConfig）
+    public void setGrid(boolean show, int size) {
+        this.showGrid = show;
+        this.gridSize = size > 0 ? size : 50; // 确保网格大小为正数
         invalidate();
     }
 
-    public void setShowGrid(boolean show) {
-        this.showGrid = show;
-    }
-
-    // 重绘图片（确保ImageView非null）
+    // 重绘图片
     public void invalidate() {
         if (imageView != null) {
             imageView.invalidate();
@@ -73,7 +72,7 @@ public class ImageHandler {
     }
 
     /**
-     * 初始化ImageView配置（缩放模式）
+     * 初始化ImageView配置（设置缩放模式）
      */
     private void initImageView() {
         if (imageView == null) return;
@@ -208,7 +207,7 @@ public class ImageHandler {
     }
 
     /**
-     * 绘制所有指纹标记（含网格）
+     * 绘制所有指纹标记（含可选网格）
      */
     public void drawAllMarkers(List<WifiFingerprint> fingerprints) {
         if (originalImage == null || imageView == null) return;
@@ -217,9 +216,9 @@ public class ImageHandler {
         Bitmap markedBitmap = originalImage.copy(Bitmap.Config.ARGB_8888, true);
         Canvas canvas = new Canvas(markedBitmap);
 
-        // 1. 先绘制网格（在标记下方，避免遮挡）
-        if (gridConfig != null && gridConfig.isShow()) {
-            drawGrid(canvas, gridConfig.getScale());
+        // 1. 绘制网格（若开启）
+        if (showGrid) {
+            drawGrid(canvas, gridSize);
         }
 
         // 2. 绘制指纹标记（红色圆点+描述）
@@ -306,11 +305,10 @@ public class ImageHandler {
         imageView.setImageMatrix(matrix);
     }
 
-    /**
-     * 重载：仅绘制定位圆点（无标签）
-     */
-    public void drawLocationMarker(float x, float y) {
-        drawLocationMarker(x, y, null);
+    // 显示坐标提示
+    public void showCoordinateToast(float x, float y) {
+        String coordText = String.format("坐标: (%.0f, %.0f)", x, y);
+        Toast.makeText(context, coordText, Toast.LENGTH_SHORT).show();
     }
 
     // ==================== 工具方法（计算间距、中点） ====================
@@ -333,5 +331,14 @@ public class ImageHandler {
 
     public ImageView getImageView() {
         return imageView;
+    }
+
+    // 网格控制相关Getter/Setter
+    public boolean isShowGrid() {
+        return showGrid;
+    }
+
+    public int getGridSize() {
+        return gridSize;
     }
 }

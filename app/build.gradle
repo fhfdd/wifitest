@@ -33,9 +33,15 @@ android {
 }
 
 dependencies {
+    // PhotoView 最新稳定版（2.4.0 兼容，但可升级到 2.6.0）
+    implementation 'com.github.chrisbanes:PhotoView:2.3.0'
+    // AndroidX 核心库（保持最新稳定版）
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
+    // Material 库（与 targetSdk 34 兼容）
+    implementation 'com.google.android.material:material:1.11.0'
+    // Gson 库（最新稳定版）
+    implementation 'com.google.code.gson:gson:2.10.1'
+    // 测试库
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    implementation 'com.google.code.gson:gson:2.8.9'
 }

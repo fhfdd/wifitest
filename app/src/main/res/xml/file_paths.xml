@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 映射应用外部私有目录（必须包含，否则FileProvider无法识别指纹库目录） -->
     <external-files-path
-        name="external_files"
-        path="." /> <!-- 表示应用外部文件目录的根路径 -->
+        name="wifi_fingerprints"
+        path="WiFi_Fingerprints/" /> <!-- 与MapFileModule中的FINGERPRINT_DIR一致 -->
+
+    <!-- 可选：映射应用外部私有目录的根目录（用于备用方案） -->
+    <external-files-path
+        name="external_files_root"
+        path="." />
 </paths>

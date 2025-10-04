@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 根布局：DrawerLayout -->
 <androidx.drawerlayout.widget.DrawerLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -8,14 +7,13 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <!-- 1. 主内容区域（ScrollView包裹原有布局） -->
+    <!-- 主内容区域 -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:padding="12dp"
         android:background="#FFFFFF">
 
-        <!-- ScrollView的唯一直接子元素：LinearLayout -->
         <LinearLayout
             android:id="@+id/rootLayout"
             android:layout_width="match_parent"
@@ -23,28 +21,38 @@
             android:orientation="vertical"
             android:layout_marginBottom="20dp">
 
-            <!-- 平面图显示区 -->
-            <TextView
-                android:id="@+id/tv_current_file"
+            <!-- 顶部区域：当前文件+更多按钮 -->
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="8dp"
-                android:background="#E3F2FD"
-                android:text="当前编辑：无文件（请创建或导入）"
-                android:textSize="14sp"
-                android:textColor="#0D47A1"
-                android:layout_marginBottom="8dp"/>
+                android:layout_marginBottom="8dp">
 
-            <Button
-                android:id="@+id/btnOpenDrawer"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="文件管理"
-                android:textSize="14sp"
-                android:backgroundTint="#1565C0"
-                android:textColor="#FFFFFF"
-                android:paddingHorizontal="12dp"/>
+                <TextView
+                    android:id="@+id/tv_current_file"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:background="#E3F2FD"
+                    android:text="当前编辑：无文件（请创建或导入）"
+                    android:textSize="14sp"
+                    android:textColor="#0D47A1"
+                    android:layout_marginEnd="50dp"/>
 
+                <!-- 三点按钮：使用系统图标 -->
+                <ImageButton
+                    android:id="@+id/btn_more"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_alignParentRight="true"
+                    android:layout_centerVertical="true"
+                    android:layout_marginRight="8dp"
+                    android:src="@drawable/ic_menu_moreoverflow"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="更多操作"/>
+
+            </RelativeLayout>
+
+            <!-- 平面图显示容器 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -55,17 +63,16 @@
                 android:layout_marginBottom="12dp"
                 android:elevation="2dp">
 
+                <!-- 平面图ImageView -->
                 <ImageView
                     android:id="@+id/imageView"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:contentDescription="校园平面图显示区域"
-                    android:scaleType="fitCenter"
-                    android:adjustViewBounds="true"
-                    android:padding="2dp"/>
+                    android:layout_height="300dp"
+                    android:background="#f0f0f0"
+                    android:scaleType="matrix"
+                    android:contentDescription="地图图片"/>
 
-                <!-- 网格控制条 -->
+                <!-- 缩放控制条（替代原网格控制） -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -74,38 +81,8 @@
                     android:background="#F5F5F5"
                     android:gravity="center_vertical">
 
-                    <CheckBox
-                        android:id="@+id/cbShowGrid"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="显示网格"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="12dp"/>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="网格大小："
-                        android:textSize="14sp"/>
-
-                    <SeekBar
-                        android:id="@+id/sbGridSize"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:max="100"
-                        android:progress="50"
-                        android:layout_marginHorizontal="8dp"/>
-
-                    <TextView
-                        android:id="@+id/tvGridSize"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="50px"
-                        android:textSize="14sp"
-                        android:minWidth="40dp"
-                        android:gravity="center"/>
                 </LinearLayout>
+
             </LinearLayout>
 
             <!-- 点位类型选择 -->
@@ -133,6 +110,7 @@
                     android:text="普通点"
                     android:textSize="15sp"
                     android:layout_marginStart="16dp"/>
+
             </RadioGroup>
 
             <!-- XY坐标+楼层+区域 -->
@@ -192,9 +170,10 @@
                     android:spinnerMode="dropdown"
                     android:popupBackground="#FFFFFF"
                     android:layout_marginStart="4dp"/>
+
             </LinearLayout>
 
-            <!-- 特殊点/普通点输入框 -->
+            <!-- 特殊点名称输入框 -->
             <EditText
                 android:id="@+id/etLabel"
                 android:layout_width="match_parent"
@@ -206,6 +185,7 @@
                 android:textColorHint="#616161"
                 android:layout_marginBottom="4dp"/>
 
+            <!-- 普通点距离输入框 -->
             <EditText
                 android:id="@+id/etPath"
                 android:layout_width="match_parent"
@@ -218,7 +198,7 @@
                 android:visibility="gone"
                 android:layout_marginBottom="8dp"/>
 
-            <!-- 核心功能按钮区 -->
+            <!-- 核心操作标题 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -228,6 +208,7 @@
                 android:textColor="#1A237E"
                 android:layout_marginBottom="6dp"/>
 
+            <!-- 核心操作按钮行1 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -253,8 +234,10 @@
                     android:textColor="#FFFFFF"
                     android:text="实时定位"
                     android:layout_marginStart="4dp"/>
+
             </LinearLayout>
 
+            <!-- 核心操作按钮行2 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -283,7 +266,7 @@
 
             </LinearLayout>
 
-            <!-- 指纹管理按钮 -->
+            <!-- 指纹管理按钮行1 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -309,8 +292,10 @@
                     android:textColor="#FFFFFF"
                     android:text="保存指纹"
                     android:layout_marginStart="4dp"/>
+
             </LinearLayout>
 
+            <!-- 指纹管理按钮行2 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -337,17 +322,9 @@
                     android:text="导出数据"
                     android:layout_marginStart="4dp"/>
 
-                <Button
-                    android:id="@+id/btnUpdateCurrentFile"
-                    android:layout_width="match_parent"
-                    android:layout_height="44dp"
-                    android:backgroundTint="#FF9800"
-                    android:text="更新当前文件"
-                    android:textColor="#FFFFFF"
-                    android:layout_marginTop="8dp"/>
             </LinearLayout>
 
-            <!-- 结果显示区 -->
+            <!-- 权限提示文本 -->
             <TextView
                 android:id="@+id/tvPermissionTip"
                 android:layout_width="wrap_content"
@@ -357,6 +334,8 @@
                 android:textColor="#F44336"
                 android:visibility="gone"
                 android:layout_marginBottom="4dp"/>
+
+            <!-- 操作结果标题 -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -366,6 +345,7 @@
                 android:textColor="#1A237E"
                 android:layout_marginBottom="6dp"/>
 
+            <!-- 操作结果显示区 -->
             <ScrollView
                 android:layout_width="match_parent"
                 android:layout_height="140dp"
@@ -385,15 +365,16 @@
 
             </ScrollView>
 
-        </LinearLayout> <!-- 主内容的LinearLayout闭合 -->
-    </ScrollView> <!-- 主内容的ScrollView闭合 -->
+        </LinearLayout>
 
+    </ScrollView>
+
+    <!-- 侧边栏 -->
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/navView"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        app:menu="@menu/menu_file_operations"
-        app:headerLayout="@layout/nav_header" />
+        app:menu="@menu/menu_file_operations"/>
 
-</androidx.drawerlayout.widget.DrawerLayout> <!-- 根布局DrawerLayout闭合 -->
+</androidx.drawerlayout.widget.DrawerLayout>
