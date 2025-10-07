@@ -26,7 +26,7 @@ import java.util.List;
  */
 public class MapFileModule {
     private static final String TAG = "MapFileModule";
-    private static final String FINGERPRINT_DIR = "WiFi_Fingerprints"; // 应用私有目录子文件夹
+    private static final String FINGERPRINT_DIR = "WiFi_Fingerprints"; // 下载目录子文件夹
     private final Context context;
     private final Gson gson = new Gson();
 
@@ -36,16 +36,18 @@ public class MapFileModule {
     }
 
     /**
-     * 修复：使用应用私有目录（无需额外存储权限），替代公共Downloads目录
-     * 路径：/Android/data/[应用包名]/files/WiFi_Fingerprints/
+     * 修改为公共下载目录下的子文件夹
+     * 路径：/storage/emulated/0/Download/WiFi_Fingerprints/
      */
     private File getFingerprintDirectory() {
-        File appFilesDir = context.getExternalFilesDir(null); // 应用私有外部存储目录
-        if (appFilesDir == null) {
-            Log.e(TAG, "应用外部存储目录不可用（可能存储空间不足）");
+        // 获取公共下载目录
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        if (downloadDir == null) {
+            Log.e(TAG, "公共下载目录不可用");
             return null;
         }
-        File fingerprintDir = new File(appFilesDir, FINGERPRINT_DIR);
+        // 创建WiFi_Fingerprints子文件夹
+        File fingerprintDir = new File(downloadDir, FINGERPRINT_DIR);
         Log.d(TAG, "指纹库目录：" + fingerprintDir.getAbsolutePath());
         return fingerprintDir;
     }
@@ -70,9 +72,6 @@ public class MapFileModule {
         }
     }
 
-    /**
-     * 修复：解析导入的指纹文件（增强异常处理）
-     */
     /**
      * 解析导入的指纹文件（从输入流）- 修复版本
      */
@@ -141,8 +140,8 @@ public class MapFileModule {
                 Log.d(TAG, "创建目录: " + dir.getAbsolutePath() + " 结果: " + dirCreated);
             }
 
-            // 2. 创建文件对象（关键修复：定义file变量）
-            File file = new File(dir, fileName); // 这里定义file变量，指定目录和文件名
+            // 2. 创建文件对象
+            File file = new File(dir, fileName);
 
             // 3. 写入文件
             try (FileOutputStream fos = new FileOutputStream(file)) {
@@ -220,7 +219,7 @@ public class MapFileModule {
     }
 
     /**
-     * 修复：获取所有指纹库文件（过滤非JSON文件）
+     * 获取所有指纹库文件（过滤非JSON文件）
      */
     public List<String> getAllFingerprintFileNames() {
         List<String> fileNames = new ArrayList<>();
@@ -246,7 +245,7 @@ public class MapFileModule {
     }
 
     /**
-     * 修复：导出指纹库（使用应用私有目录，确保导出成功）
+     * 导出指纹库（保存到公共下载目录子文件夹）
      */
     public boolean exportFingerprints(String fileName, List<WifiFingerprint> fingerprints) {
         if (fingerprints == null || fingerprints.isEmpty()) {
@@ -301,88 +300,66 @@ public class MapFileModule {
     }
 
     /**
-     * 打开导出目录（修复版：增强兼容性，适配更多文件管理器）
+     * 打开导出目录（适配公共下载目录）
      */
     public void openExportedDirectory() {
         File dir = getFingerprintDirectory();
         if (dir == null) {
-            Log.e(TAG, "打开目录失败：目录不可用（getFingerprintDirectory返回null）");
+            Log.e(TAG, "打开目录失败：目录不可用");
             Toast.makeText(context, "目录不可用，无法打开", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 确保目录存在（即使为空也创建）
+        // 确保目录存在
         if (!dir.exists() && !dir.mkdirs()) {
             Log.e(TAG, "打开目录失败：无法创建目录 " + dir.getAbsolutePath());
             Toast.makeText(context, "无法创建存储目录", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 1. 构建FileProvider的Authority（必须与AndroidManifest中一致）
+        // 构建FileProvider的Authority（需与AndroidManifest中一致）
         String authority = context.getPackageName() + ".fileprovider";
         Uri dirUri;
         try {
-            // 生成目录的Uri（关键：必须与file_paths.xml配置匹配）
             dirUri = FileProvider.getUriForFile(context, authority, dir);
             Log.d(TAG, "生成目录Uri：" + dirUri.toString());
         } catch (IllegalArgumentException e) {
-            // 捕获配置不匹配的错误（最常见的失败原因）
             Log.e(TAG, "FileProvider配置错误：" + e.getMessage() + "\n请检查file_paths.xml是否正确配置", e);
             Toast.makeText(context, "文件配置错误，无法打开目录", Toast.LENGTH_SHORT).show();
-            // 显示目录绝对路径，方便用户手动查找
             Toast.makeText(context, "文件存储路径：" + dir.getAbsolutePath(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        // 2. 构建打开目录的Intent（适配多种MIME类型）
+        // 打开目录的Intent
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        // 尝试多种MIME类型，提高兼容性
-        intent.setDataAndType(dirUri, "application/vnd.android.document.dir"); // 推荐的目录类型
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // 授予临时读权限
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // 避免在某些应用中启动失败
+        intent.setDataAndType(dirUri, "application/vnd.android.document.dir");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-        // 3. 检查是否有应用能处理该Intent
-        if (intent.resolveActivity(context.getPackageManager()) != null) {
-            try {
-                context.startActivity(intent);
-                return; // 成功启动则返回
-            } catch (Exception e) {
-                Log.e(TAG, "启动文件管理器失败：" + e.getMessage(), e);
-                // 失败则进入备用方案
-            }
-        }
-
-        // 4. 备用方案1：尝试用更通用的MIME类型
-        intent.setDataAndType(dirUri, "resource/folder"); // 部分文件管理器支持的类型
+        // 检查是否有应用能处理该Intent
         if (intent.resolveActivity(context.getPackageManager()) != null) {
             try {
                 context.startActivity(intent);
                 return;
             } catch (Exception e) {
-                Log.e(TAG, "备用方案1启动失败：" + e.getMessage());
+                Log.e(TAG, "启动文件管理器失败：" + e.getMessage(), e);
             }
         }
 
-        // 5. 备用方案2：打开目录的上级目录（应用外部私有根目录）
-        File parentDir = context.getExternalFilesDir(null);
-        if (parentDir != null && parentDir.exists()) {
-            Uri parentUri = FileProvider.getUriForFile(context, authority, parentDir);
-            intent.setDataAndType(parentUri, "application/vnd.android.document.dir");
-            if (intent.resolveActivity(context.getPackageManager()) != null) {
-                try {
-                    context.startActivity(intent);
-                    Toast.makeText(context, "请在“WiFi_Fingerprints”文件夹中查找文件", Toast.LENGTH_SHORT).show();
-                    return;
-                } catch (Exception e) {
-                    Log.e(TAG, "备用方案2启动失败：" + e.getMessage());
-                }
+        // 备用方案：尝试用更通用的MIME类型
+        intent.setDataAndType(dirUri, "resource/folder");
+        if (intent.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                context.startActivity(intent);
+                return;
+            } catch (Exception e) {
+                Log.e(TAG, "备用方案启动失败：" + e.getMessage());
             }
         }
 
-        // 6. 最终方案：提示用户手动查找（确保用户能找到文件）
+        // 最终方案：提示用户手动查找
         Log.w(TAG, "所有方案均失败，提示用户手动查找");
         Toast.makeText(context, "无法自动打开目录，请手动访问：", Toast.LENGTH_SHORT).show();
-        // 显示完整路径（应用私有目录路径格式：/Android/data/[你的包名]/files/WiFi_Fingerprints/）
         Toast.makeText(context, dir.getAbsolutePath(), Toast.LENGTH_LONG).show();
     }
 }

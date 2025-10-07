@@ -107,4 +107,6 @@ public class ConfigManager {
                 getSimilarityThreshold() <= 1 &&
                 getGridSize() > 0;
     }
+
+
 }
