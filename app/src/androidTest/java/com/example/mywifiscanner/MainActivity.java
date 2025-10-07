@@ -2,7 +2,6 @@ package com.example.mywifiscanner;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.GravityCompat;
@@ -11,19 +10,15 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -45,13 +40,8 @@ import com.google.android.material.navigation.NavigationView;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 public class MainActivity extends AppCompatActivity{
 
@@ -116,32 +106,38 @@ public class MainActivity extends AppCompatActivity{
         scanButton.setEnabled(false);
         tvResult.append("开始扫描...\n");
 
-        // 执行扫描并处理结果
-        int scanCount = configManager.getScanCount();
-        List<List<ScanResult>> allResults = wifiScanner.performMultipleScans(scanCount);
-        handleScanResults(allResults);
+        // 开启子线程执行扫描（避免阻塞主线程）
+        new Thread(() -> {
+            int scanCount = configManager.getScanCount();
+            List<List<ScanResult>> allResults = wifiScanner.performMultipleScans(scanCount);
+
+            // 回到主线程处理结果
+            runOnUiThread(() -> {
+                handleScanResults(allResults);
+                isScanning = false;
+                scanButton.setEnabled(true);
+            });
+        }).start();
     }
 
+    /**
+     * 处理多次扫描结果（对接你的现有逻辑）
+     */
     private void handleScanResults(List<List<ScanResult>> allResults) {
+        // 1. 保存扫描结果到成员变量（供后续处理）
+        multipleScans.clear();
+        multipleScans.addAll(allResults);
+
+        // 2. 检查扫描结果是否有效
         if (allResults.isEmpty()) {
-            tvResult.append("❌ 未获取到任何扫描结果\n");
-            scanButton.setEnabled(true);
+            tvResult.append("❌ 所有扫描均未获取到结果（可能被系统限制）\n");
             isScanning = false;
+            scanButton.setEnabled(true);
             return;
         }
 
-        // 处理WiFi数据
-        try {
-            filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(allResults, configManager);
-            tvResult.append("✅ 扫描完成！共发现 " + filteredWifis.size() + " 个稳定WiFi\n");
-            btnSelectWifi.setEnabled(true);
-            btnOneClickSave.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
-        } catch (Exception e) {
-            tvResult.append("❌ 处理数据出错: " + e.getMessage() + "\n");
-        }
-
-        scanButton.setEnabled(true);
-        isScanning = false;
+        // 3. 调用你已有的finishScan方法处理结果（复用现有逻辑）
+        finishScan();
     }
 
 
@@ -787,7 +783,7 @@ public class MainActivity extends AppCompatActivity{
         wifiLocationManager = new WifiLocationManager(this, wifiManager, fingerprintManager, configManager);
         Log.d(TAG, "定位管理器初始化完成");
 
-        wifiScanner = new WifiScanner(this, wifiManager);
+        wifiScanner = new WifiScanner(this, wifiManager, configManager.getScanInterval());
         Log.d(TAG, "WiFi扫描器初始化完成");
 
         // 绑定控件引用
@@ -1448,7 +1444,7 @@ public class MainActivity extends AppCompatActivity{
     }
 
     /**
-     * 显示指纹编辑对话框（修改/删除/重新扫描）
+     * 显示指纹编辑对话框（修改：允许编辑坐标，移除重新扫描）
      */
     private void showFingerprintEditDialog(WifiFingerprint fingerprint) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -1458,7 +1454,7 @@ public class MainActivity extends AppCompatActivity{
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 30, 50, 30);
 
-        // 特殊点名称输入
+        // 1. 特殊点名称输入
         EditText etLabelEdit = new EditText(this);
         etLabelEdit.setHint("特殊点名称（如：图书馆a口）");
         etLabelEdit.setText(fingerprint.getLabel());
@@ -1468,7 +1464,7 @@ public class MainActivity extends AppCompatActivity{
         ));
         layout.addView(etLabelEdit);
 
-        // 普通点距离输入
+        // 2. 普通点距离输入
         EditText etPathEdit = new EditText(this);
         etPathEdit.setHint("普通点距离描述（如：距离图书馆a口3米）");
         etPathEdit.setText(fingerprint.getPath());
@@ -1478,7 +1474,7 @@ public class MainActivity extends AppCompatActivity{
         ));
         layout.addView(etPathEdit);
 
-        // 楼层选择
+        // 3. 楼层选择
         TextView tvFloor = new TextView(this);
         tvFloor.setText("选择楼层");
         tvFloor.setTextSize(16);
@@ -1495,7 +1491,7 @@ public class MainActivity extends AppCompatActivity{
         }
         layout.addView(spinnerFloorEdit);
 
-        // 区域选择
+        // 4. 区域选择
         TextView tvZone = new TextView(this);
         tvZone.setText("选择区域");
         tvZone.setTextSize(16);
@@ -1512,29 +1508,58 @@ public class MainActivity extends AppCompatActivity{
         }
         layout.addView(spinnerZoneEdit);
 
-        // 坐标信息（不可编辑）
-        TextView tvCoordInfo = new TextView(this);
-        tvCoordInfo.setText(String.format("坐标: (%.0f, %.0f) - 不可编辑",
-                fingerprint.getPixelX(),
-                fingerprint.getPixelY()));
-        tvCoordInfo.setTextColor(Color.GRAY);
-        tvCoordInfo.setPadding(0, 20, 0, 0);
-        layout.addView(tvCoordInfo);
+        // 5. 坐标编辑（核心修改：允许手动修改X/Y坐标）
+        TextView tvCoordTitle = new TextView(this);
+        tvCoordTitle.setText("坐标修改（像素值）");
+        tvCoordTitle.setTextSize(16);
+        tvCoordTitle.setPadding(0, 20, 0, 0);
+        layout.addView(tvCoordTitle);
 
-        // WiFi数量信息
+        // X坐标输入
+        EditText etPixelXEdit = new EditText(this);
+        etPixelXEdit.setHint("X坐标");
+        etPixelXEdit.setText(String.valueOf((int) fingerprint.getPixelX())); // 显示当前X坐标
+        etPixelXEdit.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        layout.addView(etPixelXEdit);
+
+        // Y坐标输入
+        EditText etPixelYEdit = new EditText(this);
+        etPixelYEdit.setHint("Y坐标");
+        etPixelYEdit.setText(String.valueOf((int) fingerprint.getPixelY())); // 显示当前Y坐标
+        etPixelYEdit.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        layout.addView(etPixelYEdit);
+
+        // 6. WiFi数量信息（仅显示，不可修改）
         TextView tvWifiInfo = new TextView(this);
-        tvWifiInfo.setText("包含 " + fingerprint.getFilteredWifis().size() + " 个WiFi信号");
+        tvWifiInfo.setText("包含 " + fingerprint.getFilteredWifis().size() + " 个WiFi信号（不可修改）");
         tvWifiInfo.setTextColor(Color.GRAY);
+        tvWifiInfo.setPadding(0, 20, 0, 0);
         layout.addView(tvWifiInfo);
 
         builder.setView(layout);
 
-        // 保存修改
+        // 保存修改（核心修改：更新坐标值）
         builder.setPositiveButton("保存", (dialog, which) -> {
             String newLabel = etLabelEdit.getText().toString().trim();
             String newPath = etPathEdit.getText().toString().trim();
             int newFloor = Integer.parseInt(spinnerFloorEdit.getSelectedItem().toString());
             String newZone = spinnerZoneEdit.getSelectedItem().toString();
+
+            // 解析新坐标（核心修改）
+            double newX, newY;
+            try {
+                newX = Double.parseDouble(etPixelXEdit.getText().toString().trim());
+                newY = Double.parseDouble(etPixelYEdit.getText().toString().trim());
+            } catch (NumberFormatException e) {
+                Toast.makeText(MainActivity.this, "坐标格式错误（请输入数字）", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
             // 校验输入
             if ((newLabel.isEmpty() && newPath.isEmpty()) || (!newLabel.isEmpty() && !newPath.isEmpty())) {
@@ -1542,25 +1567,27 @@ public class MainActivity extends AppCompatActivity{
                 return;
             }
 
-            // 更新指纹信息
+            // 更新指纹信息（包括坐标）
             fingerprint.setLabel(newLabel);
             fingerprint.setPath(newPath);
             fingerprint.setFloor(newFloor);
             fingerprint.setZone(newZone);
+            fingerprint.setPixelX(newX); // 更新X坐标
+            fingerprint.setPixelY(newY); // 更新Y坐标
 
             boolean success = fingerprintManager.updateFingerprint(fingerprint);
 
             if (success) {
                 String tip = newLabel.isEmpty() ? "普通点（" + newPath + "）" : "特殊点（" + newLabel + "）";
-                Toast.makeText(MainActivity.this, tip + "更新成功", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, tip + "更新成功（坐标已修改）", Toast.LENGTH_SHORT).show();
                 imageHandler.drawAllMarkers(fingerprintManager.getAllFingerprints()); // 刷新地图标记
-                tvResult.setText("已更新：" + tip);
+                tvResult.setText("已更新：" + tip + " 坐标: (" + (int)newX + ", " + (int)newY + ")");
             } else {
                 Toast.makeText(MainActivity.this, "更新失败", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // 删除指纹
+        // 删除指纹（保留原有功能）
         builder.setNegativeButton("删除", (dialog, which) -> {
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("确认删除")
@@ -1580,11 +1607,7 @@ public class MainActivity extends AppCompatActivity{
                     .show();
         });
 
-        // 重新扫描WiFi（更新当前指纹的WiFi信号）
-        builder.setNeutralButton("重新扫描WiFi", (dialog, which) -> {
-            currentEditingFingerprint = fingerprint;
-            startRescanForFingerprint();
-        });
+        // 移除“重新扫描WiFi”按钮（核心修改）
 
         AlertDialog dialog = builder.create();
         dialog.show();
@@ -1686,10 +1709,7 @@ public class MainActivity extends AppCompatActivity{
             if (event.getAction() == MotionEvent.ACTION_UP && event.getPointerCount() == 1) {
                 float[] coords = coordinateManager.getCoordinatesFromTouch(event.getX(), event.getY());
                 if (coords != null) {
-                    // 显示坐标提示
-                    Toast.makeText(MainActivity.this,
-                            "坐标: (" + (int)coords[0] + ", " + (int)coords[1] + ")",
-                            Toast.LENGTH_SHORT).show();
+
                     etPixelX.setText(String.valueOf((int)coords[0]));
                     etPixelY.setText(String.valueOf((int)coords[1]));
 
