@@ -130,20 +130,29 @@ public class MapFileModule {
             String json = gson.toJson(fingerprints);
             Log.d(TAG, "准备保存JSON，长度: " + json.length());
 
-            // 确保目录存在
+            // 1. 确保目录存在
             File dir = getFingerprintDirectory();
+            if (dir == null) { // 增加目录为空的判断
+                Log.e(TAG, "保存失败：目录不可用");
+                return false;
+            }
             if (!dir.exists()) {
                 boolean dirCreated = dir.mkdirs();
                 Log.d(TAG, "创建目录: " + dir.getAbsolutePath() + " 结果: " + dirCreated);
             }
 
-            File file = new File(dir, fileName);
-            Log.d(TAG, "保存文件路径: " + file.getAbsolutePath());
+            // 2. 创建文件对象（关键修复：定义file变量）
+            File file = new File(dir, fileName); // 这里定义file变量，指定目录和文件名
 
+            // 3. 写入文件
             try (FileOutputStream fos = new FileOutputStream(file)) {
                 fos.write(json.getBytes("UTF-8"));
                 fos.flush();
-                Log.d(TAG, "指纹库保存成功：" + file.getAbsolutePath() + ", 文件大小: " + file.length());
+                Log.d(TAG, "指纹库保存成功：" + file.getAbsolutePath());
+
+                // 保存成功后，提示用户文件位置
+                String savePath = file.getAbsolutePath();
+                Toast.makeText(context, "文件已保存至：" + savePath, Toast.LENGTH_LONG).show();
 
                 // 通知系统更新文件
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {

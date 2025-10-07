@@ -53,11 +53,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class MainActivity extends AppCompatActivity implements WifiScanner.ScanCallback {
+public class MainActivity extends AppCompatActivity{
 
     private static final String TAG = "MainActivity";
     private static final int MIN_SCAN_COUNT = 3;
-    private static final int MIN_SELECT_WIFI_COUNT = 3;
+    private static final int MIN_SELECT_WIFI_COUNT = 1;
     private TextView tvFileStatus, tvResult, navHeaderFileStatus, tvPermissionTip, tvCurrentFile;
     private String currentEditingFile = null; // 当前编辑的指纹库文件名
     private CoordinateManager coordinateManager;
@@ -90,7 +90,6 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     private final List<FilteredWifi> selectedWifis = new ArrayList<>(); // 选中的WiFi
     private boolean isMarkersVisible = false;
     private boolean isScanning = false;
-    private final Handler handler = new Handler();
     private WifiFingerprint currentEditingFingerprint; // 当前编辑的指纹
 
     // 图片选择启动器（用于导入固定地图）
@@ -109,75 +108,42 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             }
     );
 
-    @Override
-    public void onMultipleScansComplete(List<List<ScanResult>> allScanResults) {
-        Log.d(TAG, "扫描完成回调，收到扫描次数: " + (allScanResults != null ? allScanResults.size() : 0));
 
-        // 确保结果不为空
-        if (allScanResults == null || allScanResults.isEmpty()) {
-            Log.e(TAG, "扫描结果为空");
-            runOnUiThread(() -> {
-                tvResult.append("扫描完成，但未获得任何扫描结果\n");
-                scanButton.setEnabled(true);
-                isScanning = false;
-            });
+    private void startScans() {
+        if (isScanning) return;
+
+        isScanning = true;
+        scanButton.setEnabled(false);
+        tvResult.append("开始扫描...\n");
+
+        // 执行扫描并处理结果
+        int scanCount = configManager.getScanCount();
+        List<List<ScanResult>> allResults = wifiScanner.performMultipleScans(scanCount);
+        handleScanResults(allResults);
+    }
+
+    private void handleScanResults(List<List<ScanResult>> allResults) {
+        if (allResults.isEmpty()) {
+            tvResult.append("❌ 未获取到任何扫描结果\n");
+            scanButton.setEnabled(true);
+            isScanning = false;
             return;
         }
 
-        // 存储扫描结果到成员变量
-        this.multipleScans = new ArrayList<>(allScanResults);
-
         // 处理WiFi数据
         try {
-            this.filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(allScanResults, configManager);
-            Log.d(TAG, "WiFi处理完成，找到WiFi数量: " + (filteredWifis != null ? filteredWifis.size() : 0));
-
-            runOnUiThread(() -> {
-                if (filteredWifis != null && !filteredWifis.isEmpty()) {
-                    tvResult.append("✅ 多次扫描完成！共发现 " + filteredWifis.size() + " 个稳定WiFi\n");
-
-                    // 无论WiFi数量多少，都启用选择按钮（这样用户至少能看到WiFi列表）
-                    btnSelectWifi.setEnabled(true);
-
-                    // 只有WiFi数量足够时才启用一键保存
-                    btnOneClickSave.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
-
-                    // 显示WiFi信号强度范围
-                    if (filteredWifis.size() > 0) {
-                        int maxRssi = filteredWifis.get(0).getRssi();
-                        int minRssi = filteredWifis.get(filteredWifis.size() - 1).getRssi();
-                        tvResult.append("信号强度范围: " + maxRssi + "dBm 到 " + minRssi + "dBm\n");
-                    }
-                } else {
-                    tvResult.append("❌ 扫描完成，但未发现稳定的WiFi信号\n");
-                    // 即使没有WiFi，也允许用户查看（会显示空列表）
-                    btnSelectWifi.setEnabled(true);
-                    btnOneClickSave.setEnabled(false);
-                }
-
-                scanButton.setEnabled(true);
-                isScanning = false;
-
-                Log.d(TAG, "UI更新完成 - btnSelectWifi: " + btnSelectWifi.isEnabled() +
-                        ", btnOneClickSave: " + btnOneClickSave.isEnabled());
-            });
-
+            filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(allResults, configManager);
+            tvResult.append("✅ 扫描完成！共发现 " + filteredWifis.size() + " 个稳定WiFi\n");
+            btnSelectWifi.setEnabled(true);
+            btnOneClickSave.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
         } catch (Exception e) {
-            Log.e(TAG, "处理WiFi数据时出错: " + e.getMessage(), e);
-            runOnUiThread(() -> {
-                tvResult.append("❌ 处理WiFi数据时出错: " + e.getMessage() + "\n");
-                scanButton.setEnabled(true);
-                isScanning = false;
-            });
+            tvResult.append("❌ 处理数据出错: " + e.getMessage() + "\n");
         }
+
+        scanButton.setEnabled(true);
+        isScanning = false;
     }
 
-    @Override
-    public void onPermissionDenied() {
-        runOnUiThread(() ->
-                Toast.makeText(this, "位置权限缺失，无法扫描WiFi", Toast.LENGTH_SHORT).show()
-        );
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -192,6 +158,12 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         initImportLauncher();
         // 初始化侧边栏
         initDrawerLayout();
+
+        ImageView imageView = findViewById(R.id.imageView); // 对应布局中的ImageView
+        imageHandler = new ImageHandler(this, imageView); // 初始化ImageHandler
+        coordinateManager = new CoordinateManager(imageHandler); // 关联坐标管理器
+
+        imageView.setOnTouchListener((v, event) -> imageHandler.handleTouchEvent(event));
 
         // 绑定点位类型切换逻辑（特殊点/普通点）
         inputSwitchModule = new InputSwitchModule(
@@ -551,9 +523,6 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 导入JSON格式的指纹库文件（优化：允许自定义保存文件名）
-     */
-    /**
      * 导入JSON格式的指纹库文件（修复版本）
      */
     private void importJsonFile() {
@@ -776,12 +745,15 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             }
         });
 
+
         // 在 initViews() 方法末尾添加以下代码
         Log.d(TAG, "初始化视图完成");
         Log.d(TAG, "按钮状态 - btnSelectWifi: " + btnSelectWifi.isEnabled() +
                 ", btnOneClickSave: " + btnOneClickSave.isEnabled() +
                 ", btnShowAllMarkers: " + btnShowAllMarkers.isEnabled());
     }
+
+
 
     /**
      * 初始化工具类（适配简化后的模块）- 添加日志版本
@@ -886,6 +858,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                 return;
             }
 
+
             saveCurrentFingerprint();
         });
 
@@ -977,74 +950,54 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     /**
      * 处理WiFi扫描（修复版本 - 解决lambda表达式变量问题）
      */
-    /**
-     * 处理WiFi扫描（增强版本）
-     */
     private void handleScanWifi() {
         if (isScanning) {
             Toast.makeText(this, "正在扫描中，请稍候...", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (permissionManager == null) {
-            Toast.makeText(this, "权限管理器初始化失败", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (wifiScanner == null) {
-            Toast.makeText(this, "WiFi扫描器初始化失败", Toast.LENGTH_SHORT).show();
-            return;
-        }
 
-        // 提前获取配置参数
-        final int scanCount = configManager.getScanCount();
-        final int intervalMs = configManager.getScanInterval();
-
-        Log.d(TAG, "开始WiFi扫描流程，扫描次数: " + scanCount + ", 间隔: " + intervalMs + "ms");
-
+        // 检查权限
         permissionManager.requestLocationPermission(new PermissionManager.PermissionCallback() {
             @Override
             public void onPermissionGranted() {
-                Log.d(TAG, "位置权限已获取，检查位置服务");
-
-                // 检查位置服务是否开启
-                if (wifiLocationManager != null && !wifiLocationManager.isLocationEnabled()) {
-                    Log.w(TAG, "位置服务未开启");
+                if (wifiLocationManager.isLocationEnabled()) {
+                    // 修复：添加启动扫描的逻辑
+                    startScans();  // 关键修复：调用扫描方法
+                } else {
                     showLocationServiceDialog();
-                    return;
                 }
-
-                Log.d(TAG, "开始WiFi扫描");
-                startScanning(scanCount, intervalMs);
             }
 
             @Override
             public void onPermissionDenied() {
-                Log.e(TAG, "位置权限被拒绝");
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "需要位置权限才能扫描WiFi", Toast.LENGTH_SHORT).show();
-                    showPermissionRationaleDialog("权限缺失", "扫描WiFi需要位置权限，请在设置中开启");
-                });
+                Toast.makeText(MainActivity.this, "需要位置权限才能扫描WiFi", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
-    /**
-     * 开始扫描WiFi（独立方法，修复版本）
-     */
-    private void startScanning(int scanCount, int intervalMs) {
-        isScanning = true;
-        tvResult.setText(String.format("开始多次扫描WiFi（共%d次，间隔%d秒）...\n",
-                scanCount, intervalMs / 1000));
-        scanButton.setEnabled(false);
-        btnSelectWifi.setEnabled(false);
-        btnOneClickSave.setEnabled(false);
 
-        // 执行多次扫描
-        wifiScanner.performMultipleScans(
-                scanCount,
-                intervalMs,
-                MainActivity.this // 当前类作为回调
-        );
+    private void finishScan() {
+        isScanning = false;
+        scanButton.setEnabled(true);
+
+        // 处理扫描结果
+        try {
+            filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(multipleScans, configManager);
+
+            if (filteredWifis.isEmpty()) {
+                tvResult.append("未发现符合条件的稳定WiFi\n");
+                btnSelectWifi.setEnabled(false);
+                btnOneClickSave.setEnabled(false);
+            } else {
+                tvResult.append(String.format("扫描完成，共发现%d个稳定WiFi\n", filteredWifis.size()));
+                btnSelectWifi.setEnabled(true);
+                btnOneClickSave.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
+            }
+        } catch (Exception e) {
+            tvResult.append("处理扫描结果失败: " + e.getMessage() + "\n");
+        }
     }
+
 
     // 显示位置服务对话框
     private void showLocationServiceDialog() {
@@ -1081,40 +1034,30 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     // 处理实时定位
     // 处理实时定位（修复版本）
     private void handleRealTimeLocate() {
-        // 检查基础条件
-        if (imageHandler == null || imageHandler.getOriginalImage() == null) {
-            Toast.makeText(this, "请先导入平面图", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 简化检查条件，主要关注指纹库是否存在
         if (fingerprintManager == null || fingerprintManager.getAllFingerprints().isEmpty()) {
             Toast.makeText(this, "请先采集指纹数据", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 检查权限和服务
+        // 简化权限检查
         if (permissionManager == null || !permissionManager.checkLocationPermission()) {
-            Toast.makeText(this, "需要位置权限才能进行定位", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "需要位置权限", Toast.LENGTH_SHORT).show();
             permissionManager.requestLocationPermission(new PermissionManager.PermissionCallback() {
                 @Override
                 public void onPermissionGranted() {
-                    // 权限获取后重新尝试定位
                     performRealTimeLocation();
                 }
 
                 @Override
                 public void onPermissionDenied() {
-                    Toast.makeText(MainActivity.this, "位置权限被拒绝，无法定位", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "需要位置权限才能测试", Toast.LENGTH_SHORT).show();
                 }
             });
             return;
         }
 
-        if (wifiLocationManager != null && !wifiLocationManager.isLocationEnabled()) {
-            showLocationServiceDialog();
-            return;
-        }
-
-        // 执行定位
+        // 执行定位（指纹测试）
         performRealTimeLocation();
     }
 
@@ -1676,60 +1619,29 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         isScanning = true;
         multipleScans.clear();
         int scanCount = configManager.getScanCount();
-        int intervalMs = configManager.getScanInterval();
-        tvResult.setText(String.format("开始重新扫描WiFi（共%d次，间隔%d秒）...\n",
-                scanCount, intervalMs / 1000));
+        tvResult.setText(String.format("开始重新扫描WiFi（共%d次）...\n", scanCount));
         scanButton.setEnabled(false);
 
-        // 执行多次扫描 - 修复：使用MainActivity.this引用外部类实例
-        wifiScanner.performMultipleScans(scanCount, intervalMs, new WifiScanner.ScanCallback() {
+        // 直接执行扫描（无回调）
+        List<List<ScanResult>> results = wifiScanner.performMultipleScans(scanCount);
+        multipleScans.addAll(results);
 
-            @Override
-            public void onMultipleScansComplete(List<List<ScanResult>> allScanResults) {
-                Log.d(TAG, "重新扫描完成回调，扫描次数: " + (allScanResults != null ? allScanResults.size() : 0));
-
-                // 修复：使用MainActivity.this引用外部类成员变量
-                MainActivity.this.multipleScans = allScanResults;
-
-                // 处理扫描结果
-                if (allScanResults != null && !allScanResults.isEmpty()) {
-                    MainActivity.this.filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(allScanResults, configManager);
-                    Log.d(TAG, "WiFi处理完成，找到WiFi数量: " + (filteredWifis != null ? filteredWifis.size() : 0));
-                } else {
-                    MainActivity.this.filteredWifis = new ArrayList<>();
-                    Log.w(TAG, "扫描结果为空");
+        // 处理结果
+        runOnUiThread(() -> {
+            try {
+                filteredWifis = WifiDataProcessor.processMultipleScansWithAverage(multipleScans, configManager);
+                if (filteredWifis.size() >= MIN_SELECT_WIFI_COUNT && currentEditingFingerprint != null) {
+                    // 更新指纹的WiFi数据
+                    currentEditingFingerprint.setFilteredWifis(filteredWifis);
+                    fingerprintManager.updateFingerprint(currentEditingFingerprint);
+                    tvResult.append("✅ 重新扫描完成，已更新指纹数据\n");
+                    Toast.makeText(MainActivity.this, "指纹WiFi数据已更新", Toast.LENGTH_SHORT).show();
                 }
-
-                runOnUiThread(() -> {
-                    // 更新当前编辑指纹的WiFi数据
-                    if (currentEditingFingerprint != null && filteredWifis != null) {
-                        currentEditingFingerprint.setFilteredWifis(new ArrayList<>(filteredWifis));
-                        fingerprintManager.updateFingerprint(currentEditingFingerprint);
-                        tvResult.append("重新扫描完成，已更新指纹数据\n");
-                        Log.d(TAG, "指纹数据更新完成");
-                    }
-
-                    // 更新UI状态
-                    if (filteredWifis != null && !filteredWifis.isEmpty()) {
-                        tvResult.append("✅ 重新扫描完成！发现 " + filteredWifis.size() + " 个WiFi信号\n");
-                    } else {
-                        tvResult.append("❌ 重新扫描完成，但未发现可用WiFi信号\n");
-                    }
-
-                    isScanning = false;
-                    scanButton.setEnabled(true);
-                    Log.d(TAG, "重新扫描状态结束，isScanning: " + isScanning);
-                });
-            }
-
-            @Override
-            public void onPermissionDenied() {
-                runOnUiThread(() -> {
-                    tvResult.append("重新扫描失败：权限不足\n");
-                    isScanning = false;
-                    scanButton.setEnabled(true);
-                    Log.e(TAG, "重新扫描权限被拒绝");
-                });
+            } catch (Exception e) {
+                tvResult.append("❌ 重新扫描处理失败: " + e.getMessage() + "\n");
+            } finally {
+                isScanning = false;
+                scanButton.setEnabled(true);
             }
         });
     }
@@ -1763,61 +1675,45 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 图片触摸监听（支持缩放、移动、点击）
+     * 图片触摸监听（支持缩放、移动、点击+添加红点）
      */
     private void setImageTouchListener() {
         imageView.setOnTouchListener((v, event) -> {
-            // 先处理缩放和拖动事件
+            // 1. 先处理图片缩放/拖动（保留原有功能）
             boolean handled = imageHandler.handleTouchEvent(event);
 
-            // 处理点击事件（ACTION_UP 表示手指抬起）
+            // 2. 只在“单点抬起”时处理点击逻辑
             if (event.getAction() == MotionEvent.ACTION_UP && event.getPointerCount() == 1) {
-                // 获取触摸点的图片坐标
                 float[] coords = coordinateManager.getCoordinatesFromTouch(event.getX(), event.getY());
-
                 if (coords != null) {
-                    float x = coords[0];
-                    float y = coords[1];
-
-                    // 1. 显示坐标 Toast
+                    // 显示坐标提示
                     Toast.makeText(MainActivity.this,
-                            "坐标: (" + (int)x + ", " + (int)y + ")",
+                            "坐标: (" + (int)coords[0] + ", " + (int)coords[1] + ")",
                             Toast.LENGTH_SHORT).show();
+                    etPixelX.setText(String.valueOf((int)coords[0]));
+                    etPixelY.setText(String.valueOf((int)coords[1]));
 
-                    // 2. 更新坐标显示文本框
-                    etPixelX.setText(String.valueOf((int)x));
-                    etPixelY.setText(String.valueOf((int)y));
-
-                    // 3. 检查是否点击了已有的指纹标记
+                    // 关键修改：清除旧标记时传入指纹列表
                     List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
+                    imageHandler.clearCurrentMarker(fingerprints); // 传入指纹列表参数
+                    imageHandler.drawCurrentMarker(coords[0], coords[1]); // 绘制当前点击位置的标记
+
+                    // 检查是否点击已有指纹标记（保留原有逻辑）
                     WifiFingerprint clickedFingerprint = coordinateManager.getClickedFingerprint(
                             event.getX(), event.getY(), fingerprints);
-
                     if (clickedFingerprint != null) {
-                        // 如果点击了已有标记，显示编辑对话框
                         showFingerprintEditDialog(clickedFingerprint);
                     }
                 }
             }
-            return handled; // 返回是否处理了触摸事件
+            return handled;
         });
     }
 
-    /**
-     * 处理权限请求结果
-     */
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (permissionManager != null) {
-            permissionManager.handlePermissionResult(requestCode, grantResults);
-        }
-    }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        handler.removeCallbacksAndMessages(null);
         if (wifiScanner != null) {
             wifiScanner.destroy();
         }

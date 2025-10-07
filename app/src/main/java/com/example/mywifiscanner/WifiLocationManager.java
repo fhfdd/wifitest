@@ -61,47 +61,34 @@ public class WifiLocationManager {
      * 执行实时定位 - 优化版本（整合权限检查和扫描逻辑）
      */
     public LocationResult startRealTimeLocation() {
-        Log.d(TAG, "开始实时定位（简化版，用于测试指纹）...");
+        Log.d(TAG, "开始实时定位...");
 
-        // 简化权限检查
         if (!checkLocationPermission()) {
-            Log.e(TAG, "需要位置权限");
+            Log.e(TAG, "位置权限不足");
             return null;
         }
 
-        // 1. 扫描当前WiFi
+        // 启动扫描并立即返回结果（依赖系统扫描完成时机）
         boolean scanSuccess = wifiManager.startScan();
         if (!scanSuccess) {
             Log.e(TAG, "WiFi扫描启动失败");
             return null;
         }
 
-        // 等待扫描完成
-        try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-
+        // 移除Thread.sleep(2000)，直接获取当前可用结果
         List<ScanResult> currentScans = wifiManager.getScanResults();
         if (currentScans == null || currentScans.isEmpty()) {
             Log.e(TAG, "扫描结果为空");
             return null;
         }
 
-        Log.d(TAG, "扫描到 " + currentScans.size() + " 个WiFi信号");
-
-        // 2. 筛选当前有效WiFi
+        // 后续处理逻辑保持不变...
         List<FilteredWifi> currentWifis = filterCurrentWifi(currentScans);
         if (currentWifis.isEmpty()) {
             Log.e(TAG, "过滤后无可用WiFi");
             return null;
         }
 
-        Log.d(TAG, "过滤后剩余 " + currentWifis.size() + " 个强信号WiFi");
-
-        // 3. 与指纹库匹配（核心指纹测试逻辑）
         return matchWithFingerprintLibraryOptimized(currentWifis);
     }
 

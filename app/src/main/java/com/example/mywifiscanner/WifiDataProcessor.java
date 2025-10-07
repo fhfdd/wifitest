@@ -25,45 +25,34 @@ public class WifiDataProcessor {
             List<List<ScanResult>> allScans,
             ConfigManager configManager) {
         List<FilteredWifi> filtered = new ArrayList<>();
-        if (allScans == null || allScans.isEmpty()) {
-            Log.w(TAG, "无扫描结果可处理");
-            return filtered;
-        }
+        if (allScans == null || allScans.isEmpty()) return filtered;
 
-        // 计算每个BSSID的RSSI总和与计数
+        // 1. 按BSSID统计RSSI总和与次数（去重+算平均）
         Map<String, Integer> rssiSumMap = new HashMap<>();
         Map<String, Integer> countMap = new HashMap<>();
         Map<String, String> ssidMap = new HashMap<>();
-
         for (List<ScanResult> scan : allScans) {
             if (scan == null) continue;
             for (ScanResult result : scan) {
                 if (result == null || result.BSSID == null) continue;
-
                 String bssid = result.BSSID;
-                int rssi = result.level;
-                rssiSumMap.put(bssid, rssiSumMap.getOrDefault(bssid, 0) + rssi);
+                rssiSumMap.put(bssid, rssiSumMap.getOrDefault(bssid, 0) + result.level);
                 countMap.put(bssid, countMap.getOrDefault(bssid, 0) + 1);
                 ssidMap.put(bssid, result.SSID);
             }
         }
 
-        // 过滤弱信号并计算平均值
-        int rssiThreshold = configManager.getWifiThreshold();
+        // 2. 过滤弱信号（低于配置阈值，默认-85dBm）
+        int rssiThreshold = configManager.getWifiThreshold(); // 默认-85dBm
         for (String bssid : rssiSumMap.keySet()) {
-            int totalRssi = rssiSumMap.get(bssid);
-            int count = countMap.get(bssid);
-            int avgRssi = totalRssi / count;
-
-            if (avgRssi > rssiThreshold) {
+            int avgRssi = rssiSumMap.get(bssid) / countMap.get(bssid);
+            if (avgRssi > rssiThreshold) { // 只保留信号强于阈值的WiFi
                 FilteredWifi wifi = new FilteredWifi(ssidMap.get(bssid), bssid, avgRssi);
                 filtered.add(wifi);
-            } else {
-                Log.d(TAG, "过滤弱信号 BSSID:" + bssid + " 平均强度:" + avgRssi + "（低于阈值" + rssiThreshold + "）");
             }
         }
 
-        // 按信号强度降序排序
+        // 3. 按信号强度降序排序
         filtered.sort((w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
         return filtered;
     }

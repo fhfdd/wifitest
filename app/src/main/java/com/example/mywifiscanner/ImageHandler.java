@@ -17,11 +17,14 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 图片处理工具类，负责加载、缩放、坐标计算和标记绘制（整合红点逻辑）
+ */
 public class ImageHandler {
-    private boolean showGrid = false; // 控制是否显示网格（本地变量，替代MapData配置）
-    private int gridSize = 50; // 网格大小（默认50像素，替代MapData配置）
+    private Bitmap markerBitmap; // 用于临时存储带标记的图片
+    private PointF currentMarker; // 记录当前标记位置
+    private boolean isMarkersVisible = false; // 标识是否显示所有指纹标记
     private Context context;
-    private List<PointF> redPoints = new ArrayList<>();
     private ImageView imageView; // 显示图片的控件
     private Bitmap originalImage; // 原始图片
     // 缩放相关变量
@@ -34,52 +37,69 @@ public class ImageHandler {
     private static final int DRAG = 1;
     private static final int ZOOM = 2;
     private int mode = NONE;
-    private Paint gridPaint; // 网格画笔
 
-    // 无参构造（初始化用）
-    public ImageHandler(Context context) {
-        this.context = context;
-    }
-
-    // 带ImageView的构造（关联显示控件）
+    // 构造方法：关联上下文和图片控件
     public ImageHandler(Context context, ImageView imageView) {
         this.context = context;
         this.imageView = imageView;
-        if (imageView != null) {
-            initImageView();
-        }
+        initImageView();
     }
 
-    // 设置ImageView（后续关联控件用）
-    public void setImageView(ImageView imageView) {
-        this.imageView = imageView;
-        if (imageView != null) {
-            initImageView();
-        }
+    /**
+     * 在指定位置绘制当前标记（单点标记）
+     * @param x 图片像素X坐标
+     * @param y 图片像素Y坐标
+     */
+    public void drawCurrentMarker(float x, float y) {
+        if (originalImage == null) return;
+
+        // 保存当前标记位置
+        currentMarker = new PointF(x, y);
+
+        // 复制原始图片，在副本上绘制标记（避免修改原图）
+        markerBitmap = originalImage.copy(Bitmap.Config.ARGB_8888, true);
+        Canvas canvas = new Canvas(markerBitmap);
+        Paint paint = new Paint();
+        paint.setColor(Color.RED);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setAntiAlias(true);
+
+        // 绘制红色圆点（半径8px）
+        canvas.drawCircle(x, y, 8, paint);
+
+        // 显示带标记的图片
+        imageView.setImageBitmap(markerBitmap);
+        imageView.setImageMatrix(matrix); // 保持当前缩放状态
     }
 
-    // 控制网格显示（替代原setGridConfig）
-    public void setGrid(boolean show, int size) {
-        this.showGrid = show;
-        this.gridSize = size > 0 ? size : 50; // 确保网格大小为正数
-        invalidate();
-    }
+    /**
+     * 清除当前标记（恢复显示原图或已有的指纹标记）
+     * @param fingerprints 指纹列表（用于重新绘制所有标记）
+     */
+    public void clearCurrentMarker(List<WifiFingerprint> fingerprints) {
+        if (currentMarker == null) return;
 
-    // 重绘图片
-    public void invalidate() {
-        if (imageView != null) {
-            imageView.invalidate();
+        currentMarker = null;
+        // 恢复显示原图（如果没有其他指纹标记）或重新绘制所有指纹标记
+        if (isMarkersVisible && fingerprints != null && !fingerprints.isEmpty()) {
+            // 如果处于"显示所有指纹"状态，重新绘制所有指纹
+            drawAllMarkers(fingerprints);
+        } else {
+            // 否则直接显示原图并保持矩阵状态
+            imageView.setImageBitmap(originalImage);
+            imageView.setImageMatrix(matrix);
         }
     }
 
     /**
-     * 初始化ImageView配置（设置缩放模式）
+     * 初始化ImageView配置（使用矩阵模式支持缩放拖动）
      */
     private void initImageView() {
-        if (imageView == null) return;
-        // 改为与布局一致的 fitXY 模式，PhotoView 支持
-        imageView.setScaleType(ImageView.ScaleType.FIT_XY);
+        if (imageView != null) {
+            imageView.setScaleType(ImageView.ScaleType.MATRIX);
+        }
     }
+
     /**
      * 从Uri加载图片
      */
@@ -109,9 +129,10 @@ public class ImageHandler {
      * 重置图片矩阵（清除缩放/拖动状态）
      */
     public void resetMatrix() {
-        if (imageView == null) return;
         matrix.reset();
-        imageView.setImageMatrix(matrix);
+        if (imageView != null) {
+            imageView.setImageMatrix(matrix);
+        }
     }
 
     /**
@@ -152,7 +173,6 @@ public class ImageHandler {
                 mode = NONE;
                 break;
         }
-
         imageView.setImageMatrix(matrix);
         return true;
     }
@@ -161,7 +181,7 @@ public class ImageHandler {
      * 计算点击位置对应的原图坐标（屏幕坐标→图片像素坐标）
      */
     public float[] calculatePixelCoordinates(float x, float y) {
-        if (originalImage == null || imageView == null) return null;
+        if (originalImage == null) return null;
 
         Matrix inverse = new Matrix();
         if (!matrix.invert(inverse)) return null; // 矩阵不可逆时返回null
@@ -169,7 +189,7 @@ public class ImageHandler {
         float[] points = new float[]{x, y};
         inverse.mapPoints(points); // 转换坐标
 
-        // 限制坐标在图片范围内（避免超出边界）
+        // 限制坐标在图片范围内
         points[0] = Math.max(0, Math.min(points[0], originalImage.getWidth()));
         points[1] = Math.max(0, Math.min(points[1], originalImage.getHeight()));
         return points;
@@ -189,40 +209,35 @@ public class ImageHandler {
     /**
      * 检查点击是否命中指纹标记（15像素范围内）
      */
-    public WifiFingerprint getClickedFingerprint(float screenX, float screenY, List<WifiFingerprint> fingerprints) {
-        if (originalImage == null || imageView == null) return null;
+    public WifiFingerprint getClickedFingerprint(float x, float y, List<WifiFingerprint> fingerprints) {
+        if (fingerprints == null || fingerprints.isEmpty()) return null;
 
-        float[] pixelCoords = calculatePixelCoordinates(screenX, screenY);
-        if (pixelCoords == null) return null;
+        float[] points = calculatePixelCoordinates(x, y);
+        if (points == null) return null;
 
-        for (WifiFingerprint fp : fingerprints) {
+        for (WifiFingerprint fingerprint : fingerprints) {
             double distance = Math.sqrt(
-                    Math.pow(pixelCoords[0] - fp.getPixelX(), 2) +
-                            Math.pow(pixelCoords[1] - fp.getPixelY(), 2)
+                    Math.pow(points[0] - fingerprint.getPixelX(), 2) +
+                            Math.pow(points[1] - fingerprint.getPixelY(), 2)
             );
             if (distance < 15) { // 15像素内视为命中
-                return fp;
+                return fingerprint;
             }
         }
         return null;
     }
 
     /**
-     * 绘制所有指纹标记（含可选网格）
+     * 绘制所有指纹标记（红点+标签）
      */
     public void drawAllMarkers(List<WifiFingerprint> fingerprints) {
-        if (originalImage == null || imageView == null) return;
+        if (originalImage == null || fingerprints == null || fingerprints.isEmpty()) return;
 
         // 创建可编辑的图片副本
         Bitmap markedBitmap = originalImage.copy(Bitmap.Config.ARGB_8888, true);
         Canvas canvas = new Canvas(markedBitmap);
 
-        // 1. 绘制网格（若开启）
-        if (showGrid) {
-            drawGrid(canvas, gridSize);
-        }
-
-        // 2. 绘制指纹标记（红色圆点+描述）
+        // 配置画笔
         Paint circlePaint = new Paint();
         circlePaint.setColor(Color.RED);
         circlePaint.setStyle(Paint.Style.FILL);
@@ -233,66 +248,41 @@ public class ImageHandler {
         textPaint.setTextSize(30);
         textPaint.setAntiAlias(true);
 
-        for (WifiFingerprint fp : fingerprints) {
-            float x = (float) fp.getPixelX();
-            float y = (float) fp.getPixelY();
-            // 绘制红色圆点（半径15像素）
+        // 逐个绘制标记
+        for (WifiFingerprint fingerprint : fingerprints) {
+            float x = (float) fingerprint.getPixelX();
+            float y = (float) fingerprint.getPixelY();
+            // 绘制红点（半径15像素）
             canvas.drawCircle(x, y, 15, circlePaint);
-            // 绘制描述文本（特殊点显示标签，普通点显示坐标）
-            String text = fp.getLabel() != null && !fp.getLabel().isEmpty()
-                    ? fp.getLabel()
+            // 绘制标签或坐标
+            String text = fingerprint.getLabel() != null && !fingerprint.getLabel().isEmpty()
+                    ? fingerprint.getLabel()
                     : String.format("(%.0f,%.0f)", x, y);
             canvas.drawText(text, x - 40, y + 40, textPaint);
         }
 
-        // 更新ImageView显示
         imageView.setImageBitmap(markedBitmap);
         imageView.setImageMatrix(matrix);
+        isMarkersVisible = true; // 更新标记显示状态
     }
 
     /**
-     * 绘制网格（半透明灰色）
-     */
-    private void drawGrid(Canvas canvas, int gridSize) {
-        if (gridSize <= 0 || originalImage == null) return;
-
-        if (gridPaint == null) {
-            gridPaint = new Paint();
-            gridPaint.setColor(Color.GRAY);
-            gridPaint.setStrokeWidth(1f);
-            gridPaint.setAlpha(128); // 半透明，不遮挡图片
-        }
-
-        int width = originalImage.getWidth();
-        int height = originalImage.getHeight();
-
-        // 绘制垂直线（X轴方向）
-        for (int x = gridSize; x < width; x += gridSize) {
-            canvas.drawLine(x, 0, x, height, gridPaint);
-        }
-
-        // 绘制水平线（Y轴方向）
-        for (int y = gridSize; y < height; y += gridSize) {
-            canvas.drawLine(0, y, width, y, gridPaint);
-        }
-    }
-
-    /**
-     * 绘制定位标记（红色圆点+标签）
+     * 绘制定位标记（单个红点+可选标签）
      */
     public void drawLocationMarker(float x, float y, String label) {
-        if (originalImage == null || imageView == null) return;
+        if (originalImage == null) return;
 
         Bitmap markedBitmap = originalImage.copy(Bitmap.Config.ARGB_8888, true);
         Canvas canvas = new Canvas(markedBitmap);
 
-        // 绘制红色圆点
-        Paint paint = new Paint();
-        paint.setColor(Color.RED);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawCircle(x, y, 15, paint);
+        // 绘制红点
+        Paint circlePaint = new Paint();
+        circlePaint.setColor(Color.RED);
+        circlePaint.setStyle(Paint.Style.FILL);
+        circlePaint.setAntiAlias(true);
+        canvas.drawCircle(x, y, 15, circlePaint);
 
-        // 绘制标签（若有）
+        // 绘制标签
         if (label != null && !label.isEmpty()) {
             Paint textPaint = new Paint();
             textPaint.setColor(Color.BLACK);
@@ -305,27 +295,32 @@ public class ImageHandler {
         imageView.setImageMatrix(matrix);
     }
 
-
-    // 显示坐标提示
-    public void showCoordinateToast(float x, float y) {
-        String coordText = String.format("坐标: (%.0f, %.0f)", x, y);
-        Toast.makeText(context, coordText, Toast.LENGTH_SHORT).show();
+    /**
+     * 重载：绘制定位标记（仅红点）
+     */
+    public void drawLocationMarker(float x, float y) {
+        drawLocationMarker(x, y, null);
     }
 
-    // ==================== 工具方法（计算间距、中点） ====================
+    /**
+     * 计算两点间距（缩放用）
+     */
     private float spacing(android.view.MotionEvent event) {
         float x = event.getX(0) - event.getX(1);
         float y = event.getY(0) - event.getY(1);
         return (float) Math.sqrt(x * x + y * y);
     }
 
+    /**
+     * 计算两点中点（缩放中心用）
+     */
     private void midPoint(PointF point, android.view.MotionEvent event) {
         float x = event.getX(0) + event.getX(1);
         float y = event.getY(0) + event.getY(1);
         point.set(x / 2, y / 2);
     }
 
-    // ==================== Getter ====================
+    // Getter和Setter
     public Bitmap getOriginalImage() {
         return originalImage;
     }
@@ -334,12 +329,16 @@ public class ImageHandler {
         return imageView;
     }
 
-    // 网格控制相关Getter/Setter
-    public boolean isShowGrid() {
-        return showGrid;
+    public void setImageView(ImageView imageView) {
+        this.imageView = imageView;
+        initImageView();
     }
 
-    public int getGridSize() {
-        return gridSize;
+    public boolean isMarkersVisible() {
+        return isMarkersVisible;
+    }
+
+    public void setMarkersVisible(boolean markersVisible) {
+        isMarkersVisible = markersVisible;
     }
 }

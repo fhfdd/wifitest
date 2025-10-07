@@ -1,11 +1,12 @@
 package com.example.mywifiscanner;
 
 import android.graphics.Bitmap;
+import android.graphics.PointF;
 
 import java.util.List;
 
 /**
- * 坐标管理器 - 处理所有坐标相关操作
+ * 坐标管理器 - 处理所有坐标相关操作（依赖ImageHandler）
  */
 public class CoordinateManager {
     private ImageHandler imageHandler;
@@ -34,7 +35,7 @@ public class CoordinateManager {
     /**
      * 获取所有标记的坐标信息
      */
-    public List<android.graphics.PointF> getMarkerPositions(List<WifiFingerprint> fingerprints) {
+    public List<PointF> getMarkerPositions(List<WifiFingerprint> fingerprints) {
         return imageHandler.getMarkerPositions(fingerprints);
     }
 
