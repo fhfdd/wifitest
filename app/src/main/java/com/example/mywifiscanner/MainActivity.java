@@ -57,10 +57,11 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
 
     private static final String TAG = "MainActivity";
     private static final int MIN_SCAN_COUNT = 3;
-    private static final int MIN_SELECT_WIFI_COUNT = 3;
+    private static final int MIN_SELECT_WIFI_COUNT = 1;
     private TextView tvFileStatus, tvResult, navHeaderFileStatus, tvPermissionTip, tvCurrentFile;
     private String currentEditingFile = null; // 当前编辑的指纹库文件名
     private CoordinateManager coordinateManager;
+    private RedPointPhotoView redPointPhotoView;
     private MapFileModule mapFileModule; // 指纹库文件管理
     private InputSwitchModule inputSwitchModule;
     private Button btnShowAllMarkers, btnManageFingerprints, btnImportImage, scanButton, btnSelectWifi, btnOneClickSave, btnExport, btnRealTimeLocate;
@@ -139,7 +140,6 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                     // 无论WiFi数量多少，都启用选择按钮（这样用户至少能看到WiFi列表）
                     btnSelectWifi.setEnabled(true);
 
-                    // 只有WiFi数量足够时才启用一键保存
                     btnOneClickSave.setEnabled(filteredWifis.size() >= MIN_SELECT_WIFI_COUNT);
 
                     // 显示WiFi信号强度范围
@@ -724,6 +724,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
         drawerLayout = findViewById(R.id.drawerLayout);
         navView = findViewById(R.id.navView);
         btnMore = findViewById(R.id.btn_more);
+        redPointPhotoView = findViewById(R.id.imageView);
         tvCurrentFile = findViewById(R.id.tv_current_file);
         View headerView = navView.getHeaderView(0);
         btnImportImage = findViewById(R.id.btnImportImage);
@@ -776,12 +777,15 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
             }
         });
 
+
         // 在 initViews() 方法末尾添加以下代码
         Log.d(TAG, "初始化视图完成");
         Log.d(TAG, "按钮状态 - btnSelectWifi: " + btnSelectWifi.isEnabled() +
                 ", btnOneClickSave: " + btnOneClickSave.isEnabled() +
                 ", btnShowAllMarkers: " + btnShowAllMarkers.isEnabled());
     }
+
+
 
     /**
      * 初始化工具类（适配简化后的模块）- 添加日志版本
@@ -885,6 +889,7 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
                 Toast.makeText(this, "按钮未启用，请先完成WiFi扫描", Toast.LENGTH_SHORT).show();
                 return;
             }
+
 
             saveCurrentFingerprint();
         });
@@ -1081,40 +1086,30 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     // 处理实时定位
     // 处理实时定位（修复版本）
     private void handleRealTimeLocate() {
-        // 检查基础条件
-        if (imageHandler == null || imageHandler.getOriginalImage() == null) {
-            Toast.makeText(this, "请先导入平面图", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 简化检查条件，主要关注指纹库是否存在
         if (fingerprintManager == null || fingerprintManager.getAllFingerprints().isEmpty()) {
             Toast.makeText(this, "请先采集指纹数据", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 检查权限和服务
+        // 简化权限检查
         if (permissionManager == null || !permissionManager.checkLocationPermission()) {
-            Toast.makeText(this, "需要位置权限才能进行定位", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "需要位置权限", Toast.LENGTH_SHORT).show();
             permissionManager.requestLocationPermission(new PermissionManager.PermissionCallback() {
                 @Override
                 public void onPermissionGranted() {
-                    // 权限获取后重新尝试定位
                     performRealTimeLocation();
                 }
 
                 @Override
                 public void onPermissionDenied() {
-                    Toast.makeText(MainActivity.this, "位置权限被拒绝，无法定位", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "需要位置权限才能测试", Toast.LENGTH_SHORT).show();
                 }
             });
             return;
         }
 
-        if (wifiLocationManager != null && !wifiLocationManager.isLocationEnabled()) {
-            showLocationServiceDialog();
-            return;
-        }
-
-        // 执行定位
+        // 执行定位（指纹测试）
         performRealTimeLocation();
     }
 
@@ -1763,43 +1758,39 @@ public class MainActivity extends AppCompatActivity implements WifiScanner.ScanC
     }
 
     /**
-     * 图片触摸监听（支持缩放、移动、点击）
+     * 图片触摸监听（支持缩放、移动、点击+添加红点）
      */
     private void setImageTouchListener() {
         imageView.setOnTouchListener((v, event) -> {
-            // 先处理缩放和拖动事件
+            // 1. 先处理图片缩放/拖动（ImageHandler的触摸逻辑，保留原有功能）
             boolean handled = imageHandler.handleTouchEvent(event);
 
-            // 处理点击事件（ACTION_UP 表示手指抬起）
+            // 2. 只在“单点抬起”时显示单次红点
             if (event.getAction() == MotionEvent.ACTION_UP && event.getPointerCount() == 1) {
-                // 获取触摸点的图片坐标
+                // 可选：点击新位置前清除旧红点（确保立即覆盖）
+                redPointPhotoView.clearRedPoint();
+                // 调用RedPointPhotoView的方法，添加新红点（自动覆盖旧点）
+                redPointPhotoView.addRedPoint(event.getX(), event.getY());
+
+                // 3. 保留原有坐标显示逻辑（Toast+文本框更新）
                 float[] coords = coordinateManager.getCoordinatesFromTouch(event.getX(), event.getY());
-
                 if (coords != null) {
-                    float x = coords[0];
-                    float y = coords[1];
-
-                    // 1. 显示坐标 Toast
                     Toast.makeText(MainActivity.this,
-                            "坐标: (" + (int)x + ", " + (int)y + ")",
+                            "坐标: (" + (int)coords[0] + ", " + (int)coords[1] + ")",
                             Toast.LENGTH_SHORT).show();
+                    etPixelX.setText(String.valueOf((int)coords[0]));
+                    etPixelY.setText(String.valueOf((int)coords[1]));
 
-                    // 2. 更新坐标显示文本框
-                    etPixelX.setText(String.valueOf((int)x));
-                    etPixelY.setText(String.valueOf((int)y));
-
-                    // 3. 检查是否点击了已有的指纹标记
+                    // 检查是否点击已有指纹标记（原有逻辑保留）
                     List<WifiFingerprint> fingerprints = fingerprintManager.getAllFingerprints();
                     WifiFingerprint clickedFingerprint = coordinateManager.getClickedFingerprint(
                             event.getX(), event.getY(), fingerprints);
-
                     if (clickedFingerprint != null) {
-                        // 如果点击了已有标记，显示编辑对话框
                         showFingerprintEditDialog(clickedFingerprint);
                     }
                 }
             }
-            return handled; // 返回是否处理了触摸事件
+            return handled;
         });
     }
 

@@ -21,6 +21,7 @@ public class ImageHandler {
     private boolean showGrid = false; // 控制是否显示网格（本地变量，替代MapData配置）
     private int gridSize = 50; // 网格大小（默认50像素，替代MapData配置）
     private Context context;
+    private List<PointF> redPoints = new ArrayList<>();
     private ImageView imageView; // 显示图片的控件
     private Bitmap originalImage; // 原始图片
     // 缩放相关变量
@@ -76,9 +77,9 @@ public class ImageHandler {
      */
     private void initImageView() {
         if (imageView == null) return;
-        imageView.setScaleType(ImageView.ScaleType.MATRIX);
+        // 改为与布局一致的 fitXY 模式，PhotoView 支持
+        imageView.setScaleType(ImageView.ScaleType.FIT_XY);
     }
-
     /**
      * 从Uri加载图片
      */
@@ -286,11 +287,10 @@ public class ImageHandler {
         Canvas canvas = new Canvas(markedBitmap);
 
         // 绘制红色圆点
-        Paint circlePaint = new Paint();
-        circlePaint.setColor(Color.RED);
-        circlePaint.setStyle(Paint.Style.FILL);
-        circlePaint.setAntiAlias(true);
-        canvas.drawCircle(x, y, 15, circlePaint);
+        Paint paint = new Paint();
+        paint.setColor(Color.RED);
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(x, y, 15, paint);
 
         // 绘制标签（若有）
         if (label != null && !label.isEmpty()) {
@@ -304,6 +304,7 @@ public class ImageHandler {
         imageView.setImageBitmap(markedBitmap);
         imageView.setImageMatrix(matrix);
     }
+
 
     // 显示坐标提示
     public void showCoordinateToast(float x, float y) {

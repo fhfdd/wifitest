@@ -58,8 +58,15 @@ public class PermissionManager {
      * 检查位置权限
      */
     public boolean checkLocationPermission() {
-        return ContextCompat.checkSelfPermission(activity,
-                android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        // 自用场景下，放宽权限检查（例如只检查粗略位置，或直接返回true）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // 允许使用粗略位置（无需精确定位权限）
+            return ContextCompat.checkSelfPermission(activity,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            // 旧版本直接返回true（跳过检查，仅测试用）
+            return true;
+        }
     }
 
     /**
@@ -82,8 +89,9 @@ public class PermissionManager {
             callback.onPermissionGranted();
         } else {
             this.locationPermissionCallback = callback;
+            // 改为请求粗略位置权限
             ActivityCompat.requestPermissions(activity,
-                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
+                    new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION},
                     REQUEST_LOCATION_PERMISSION);
         }
     }
