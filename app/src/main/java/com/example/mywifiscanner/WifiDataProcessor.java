@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 
 /**
  * 统一的WiFi数据处理工具类
@@ -36,8 +37,22 @@ public class WifiDataProcessor {
             for (ScanResult result : scan) {
                 if (result == null || result.BSSID == null) continue;
                 String bssid = result.BSSID;
-                rssiSumMap.put(bssid, rssiSumMap.getOrDefault(bssid, 0) + result.level);
-                countMap.put(bssid, countMap.getOrDefault(bssid, 0) + 1);
+
+                // 替换 getOrDefault 兼容低版本
+                // 处理RSSI总和
+                Integer currentSum = rssiSumMap.get(bssid);
+                if (currentSum == null) {
+                    currentSum = 0;
+                }
+                rssiSumMap.put(bssid, currentSum + result.level);
+
+                // 处理计数
+                Integer currentCount = countMap.get(bssid);
+                if (currentCount == null) {
+                    currentCount = 0;
+                }
+                countMap.put(bssid, currentCount + 1);
+
                 ssidMap.put(bssid, result.SSID);
             }
         }
@@ -53,7 +68,7 @@ public class WifiDataProcessor {
         }
 
         // 3. 按信号强度降序排序
-        filtered.sort((w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
+        Collections.sort(filtered, (w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
         return filtered;
     }
 
@@ -98,7 +113,7 @@ public class WifiDataProcessor {
         }
 
         filtered = new ArrayList<>(bssidMap.values());
-        filtered.sort((w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
+        Collections.sort(filtered, (w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
         return filtered;
     }
 
@@ -130,7 +145,7 @@ public class WifiDataProcessor {
         }
 
         // 按信号强度降序排序
-        filtered.sort((w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
+        Collections.sort(filtered, (w1, w2) -> Integer.compare(w2.getRssi(), w1.getRssi()));
         return filtered;
     }
 

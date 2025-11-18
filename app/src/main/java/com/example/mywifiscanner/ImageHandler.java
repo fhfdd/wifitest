@@ -21,6 +21,7 @@ import java.util.List;
  * 图片处理工具类，负责加载、缩放、坐标计算和标记绘制（整合红点逻辑）
  */
 public class ImageHandler {
+
     private Bitmap markerBitmap; // 用于临时存储带标记的图片
     private PointF currentMarker; // 记录当前标记位置
     private boolean isMarkersVisible = false; // 标识是否显示所有指纹标记
@@ -37,6 +38,7 @@ public class ImageHandler {
     private static final int DRAG = 1;
     private static final int ZOOM = 2;
     private int mode = NONE;
+
 
     // 构造方法：关联上下文和图片控件
     public ImageHandler(Context context, ImageView imageView) {
@@ -267,28 +269,32 @@ public class ImageHandler {
     }
 
     /**
-     * 绘制定位标记（单个红点+可选标签）
+     * 绘制定位标记（单个蓝点+可选标签）
+     * @param x 像素X坐标
+     * @param y 像素Y坐标
+     * @param label 标签文本（可为null）
      */
     public void drawLocationMarker(float x, float y, String label) {
         if (originalImage == null) return;
 
+        // 创建图片副本
         Bitmap markedBitmap = originalImage.copy(Bitmap.Config.ARGB_8888, true);
         Canvas canvas = new Canvas(markedBitmap);
 
-        // 绘制红点
-        Paint circlePaint = new Paint();
-        circlePaint.setColor(Color.RED);
-        circlePaint.setStyle(Paint.Style.FILL);
-        circlePaint.setAntiAlias(true);
-        canvas.drawCircle(x, y, 15, circlePaint);
+        // 绘制定位点（蓝色大圆点）
+        Paint paint = new Paint();
+        paint.setColor(Color.BLUE);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setAntiAlias(true);
+        canvas.drawCircle(x, y, 20, paint);
 
         // 绘制标签
         if (label != null && !label.isEmpty()) {
             Paint textPaint = new Paint();
-            textPaint.setColor(Color.BLACK);
+            textPaint.setColor(Color.WHITE);
             textPaint.setTextSize(30);
             textPaint.setAntiAlias(true);
-            canvas.drawText(label, x - 40, y + 40, textPaint);
+            canvas.drawText(label, x - 30, y + 50, textPaint);
         }
 
         imageView.setImageBitmap(markedBitmap);
@@ -296,7 +302,7 @@ public class ImageHandler {
     }
 
     /**
-     * 重载：绘制定位标记（仅红点）
+     * 重载：绘制定位标记（仅蓝点）
      */
     public void drawLocationMarker(float x, float y) {
         drawLocationMarker(x, y, null);

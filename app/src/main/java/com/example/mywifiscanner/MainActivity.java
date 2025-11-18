@@ -102,16 +102,43 @@ public class MainActivity extends AppCompatActivity{
     private void startScans() {
         if (isScanning) return;
 
+        permissionManager.requestLocationPermission(new PermissionManager.PermissionCallback() {
+            @Override
+            public void onPermissionGranted() {
+                if (!wifiLocationManager.isLocationEnabled()) {
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("定位服务未开启")
+                            .setMessage("需要开启定位服务才能扫描WiFi")
+                            .setPositiveButton("去开启", (d, w) -> {
+                                startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                            })
+                            .show();
+                    return;
+                }
+                proceedWithScanning();
+            }
+            @Override
+            public void onPermissionDenied() {
+                Toast.makeText(MainActivity.this, "需要位置权限才能扫描WiFi", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+
+    // 实际执行扫描的方法
+    private void proceedWithScanning() {
+        if (!wifiManager.isWifiEnabled()) {
+            Toast.makeText(this, "请先开启WiFi", Toast.LENGTH_SHORT).show();
+            return;
+        }
         isScanning = true;
         scanButton.setEnabled(false);
         tvResult.append("开始扫描...\n");
 
-        // 开启子线程执行扫描（避免阻塞主线程）
         new Thread(() -> {
             int scanCount = configManager.getScanCount();
             List<List<ScanResult>> allResults = wifiScanner.performMultipleScans(scanCount);
 
-            // 回到主线程处理结果
             runOnUiThread(() -> {
                 handleScanResults(allResults);
                 isScanning = false;
@@ -124,19 +151,17 @@ public class MainActivity extends AppCompatActivity{
      * 处理多次扫描结果（对接你的现有逻辑）
      */
     private void handleScanResults(List<List<ScanResult>> allResults) {
-        // 1. 保存扫描结果到成员变量（供后续处理）
         multipleScans.clear();
         multipleScans.addAll(allResults);
 
-        // 2. 检查扫描结果是否有效
         if (allResults.isEmpty()) {
-            tvResult.append("❌ 所有扫描均未获取到结果（可能被系统限制）\n");
+            tvResult.append("❌ 所有扫描均未获取到结果\n");
+            tvResult.append("请检查：1.WiFi是否开启 2.位置权限是否授予 3.是否在设置中允许应用使用位置\n");
             isScanning = false;
             scanButton.setEnabled(true);
             return;
         }
 
-        // 3. 调用你已有的finishScan方法处理结果（复用现有逻辑）
         finishScan();
     }
 
@@ -228,6 +253,7 @@ public class MainActivity extends AppCompatActivity{
     }
 
     // 显示配置设置对话框
+    // 显示配置设置对话框
     private void showSettingsDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("配置设置");
@@ -261,17 +287,18 @@ public class MainActivity extends AppCompatActivity{
 
         // WiFi信号阈值设置
         TextView tvWifiThreshold = new TextView(this);
-        tvWifiThreshold.setText("WiFi信号阈值: " + configManager.getWifiThreshold() + "dBm");
+        tvWifiThreshold.setText("信号强度阈值: " + configManager.getWifiThreshold() + "dBm");
         layout.addView(tvWifiThreshold);
 
         SeekBar sbWifiThreshold = new SeekBar(this);
-        sbWifiThreshold.setMax(40); // -50到-90dBm的范围
-        sbWifiThreshold.setProgress(-50 - configManager.getWifiThreshold());
+        sbWifiThreshold.setMax(50); // 范围: -100 ~ -50
+        int thresholdProgress = configManager.getWifiThreshold() + 100; // 转换为0-50范围
+        sbWifiThreshold.setProgress(thresholdProgress);
         sbWifiThreshold.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int threshold = -50 - progress;
-                tvWifiThreshold.setText("WiFi信号阈值: " + threshold + "dBm");
+                int threshold = progress - 100;
+                tvWifiThreshold.setText("信号强度阈值: " + threshold + "dBm");
             }
 
             @Override
@@ -284,14 +311,23 @@ public class MainActivity extends AppCompatActivity{
 
         builder.setView(layout);
         builder.setPositiveButton("保存", (dialog, which) -> {
+            // 保存扫描次数
             int newScanCount = sbScanCount.getProgress() + 1;
-            int newWifiThreshold = -50 - sbWifiThreshold.getProgress();
-
             configManager.setScanCount(newScanCount);
-            configManager.setWifiThreshold(newWifiThreshold);
-            Toast.makeText(this, "配置已保存", Toast.LENGTH_SHORT).show();
+            // 保存WiFi阈值
+            int newThreshold = sbWifiThreshold.getProgress() - 100;
+            configManager.setWifiThreshold(newThreshold);
+            Toast.makeText(MainActivity.this, "配置已保存", Toast.LENGTH_SHORT).show();
         });
         builder.setNegativeButton("取消", null);
+        builder.setNeutralButton("恢复默认", (dialog, which) -> {
+            configManager.restoreDefaultSettings();
+            // 刷新UI显示
+            tvScanCount.setText("扫描次数: " + configManager.getScanCount());
+            sbScanCount.setProgress(configManager.getScanCount() - 1);
+            tvWifiThreshold.setText("信号强度阈值: " + configManager.getWifiThreshold() + "dBm");
+            sbWifiThreshold.setProgress(configManager.getWifiThreshold() + 100);
+        });
         builder.show();
     }
 
@@ -568,6 +604,8 @@ public class MainActivity extends AppCompatActivity{
         }
     }
 
+
+
     /**
      * 初始化侧边栏
      */
@@ -754,6 +792,7 @@ public class MainActivity extends AppCompatActivity{
     /**
      * 初始化工具类（适配简化后的模块）- 添加日志版本
      */
+    // 在 initManagers 方法中修改 WifiManager 获取方式
     private void initManagers() {
         Log.d(TAG, "开始初始化管理器");
 
@@ -768,7 +807,8 @@ public class MainActivity extends AppCompatActivity{
         imageHandler = new ImageHandler(this, imageView);
         Log.d(TAG, "图片处理器初始化完成");
 
-        wifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+        // 修复：使用应用上下文获取 WifiManager 避免内存泄漏
+        wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (wifiManager == null) {
             Log.e(TAG, "无法获取WifiManager服务");
             Toast.makeText(this, "无法访问WiFi功能", Toast.LENGTH_SHORT).show();

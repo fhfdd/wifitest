@@ -1,10 +1,14 @@
 package com.example.mywifiscanner;
+import com.google.gson.annotations.SerializedName;
 
 // FilteredWifi.java
 public class FilteredWifi {
-    private String ssid; // WiFi名称
-    private String bssid; // WiFi的MAC地址（唯一标识）
-    private int rssi; // 信号强度（dBm）
+    @SerializedName("ssid")
+    private String ssid;
+    @SerializedName("bssid")
+    private String bssid;
+    @SerializedName("rssi")
+    private int rssi;
 
     // 保留三参数构造函数
     public FilteredWifi(String ssid, String bssid, int rssi) {

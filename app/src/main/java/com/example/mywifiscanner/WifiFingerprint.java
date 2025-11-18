@@ -1,18 +1,28 @@
 package com.example.mywifiscanner;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.List;
 
 /**
  * WiFi指纹数据模型：存储单个点位的WiFi指纹信息
  */
 public class WifiFingerprint {
-    private double pixelX; // 像素X坐标
-    private double pixelY; // 像素Y坐标
-    private int floor; // 楼层
-    private String zone; // 区域
-    private String label; // 特殊点标签（可为null）
-    private String path; // 普通点路径（可为null）
-    private List<FilteredWifi> filteredWifis; // 过滤后的WiFi信号列表
+
+    @SerializedName("pixelX") // 对应JSON中的"x"字段
+    private double pixelX;
+    @SerializedName("pixelY") // 对应JSON中的"y"字段
+    private double pixelY;
+    @SerializedName("floor")
+    private int floor;
+    @SerializedName("zone")
+    private String zone;
+    @SerializedName("label")
+    private String label;
+    @SerializedName("path")
+    private String path;
+    @SerializedName("wifis") // 对应JSON中的"wifis"数组
+    private List<FilteredWifi> filteredWifis;
 
     // 默认构造方法（JSON序列化需要）
     public WifiFingerprint() {}
